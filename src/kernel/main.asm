@@ -80,6 +80,24 @@ switch_to_pm:
     jmp CODE_SEG:init_pm
 
 [bits 32]
+
+global idt_load
+idt_load:
+    mov eax, [esp+4]
+    lidt [eax]
+    ret
+
+extern keyboard_handler_c
+
+global keyboard_handler_asm
+keyboard_handler_asm:
+    pusha
+    call keyboard_handler_c
+    mov al, 0x20
+    out 0x20, al        ; tell PIC "handled"
+    popa
+    iretd
+
 init_pm:
     mov ax, DATA_SEG
     mov ds, ax
