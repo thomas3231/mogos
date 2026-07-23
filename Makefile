@@ -1,5 +1,6 @@
 ASM=nasm
-CC=gcc
+CC=i686-elf-gcc
+LD=i686-elf-ld
 
 SRC_DIR=src
 TOOLS_DIR=tools
@@ -34,8 +35,14 @@ $(BUILD_DIR)/bootloader.bin: always
 #
 kernel: $(BUILD_DIR)/kernel.bin
 
-$(BUILD_DIR)/kernel.bin: always
-	$(ASM) $(SRC_DIR)/kernel/main.asm -f bin -o $(BUILD_DIR)/kernel.bin
+$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o
+	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o --oformat binary
+
+$(BUILD_DIR)/kernel_entry.o: always $(SRC_DIR)/kernel/main.asm
+	$(ASM) $(SRC_DIR)/kernel/main.asm -f elf32 -o $(BUILD_DIR)/kernel_entry.o
+
+$(BUILD_DIR)/kernel.o: always $(SRC_DIR)/kernel/kernel.c
+	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/kernel.c -o $(BUILD_DIR)/kernel.o
 
 #
 # Tools
@@ -43,7 +50,7 @@ $(BUILD_DIR)/kernel.bin: always
 tools_fat: $(BUILD_DIR)/tools/fat
 $(BUILD_DIR)/tools/fat: always $(TOOLS_DIR)/fat/fat.c
 	mkdir -p $(BUILD_DIR)/tools
-	$(CC) -std=gnu17 -g -o $(BUILD_DIR)/tools/fat $(TOOLS_DIR)/fat/fat.c
+	gcc -std=gnu17 -g -o $(BUILD_DIR)/tools/fat $(TOOLS_DIR)/fat/fat.c
 
 #
 # Always
