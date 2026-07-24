@@ -1,6 +1,6 @@
 bits 16
 global start
-
+global framebuffer_addr
 
 %define ENDL 0x0D, 0x0A
 
@@ -9,6 +9,7 @@ start:
     call puts
 
     call enable_a20
+    call set_vesa_mode
     call switch_to_pm
 
     jmp $
@@ -40,6 +41,30 @@ enable_a20:
     out 0x92, al
 .after:
     ret
+
+set_vesa_mode:
+    mov ax, 0x4F01
+    mov cx, 0x118
+    mov di, vbe_mode_info
+    int 0x10
+
+    mov ax, 0x4F02
+    mov bx, 0x4118
+    int 0x10
+    cmp ax, 0x004F          ; VBE success code
+    jne .vesa_failed
+
+    mov eax, [vbe_mode_info + 40]
+    mov [framebuffer_addr], eax
+    ret
+
+.vesa_failed:
+    mov si, msg_vesa_failed
+    call puts
+    jmp $
+
+vbe_mode_info: times 256 db 0
+framebuffer_addr: dd 0
 
 gdt_start:
     dq 0x0000000000000000
@@ -116,3 +141,4 @@ init_pm:
 
 [bits 16]
 msg_hello: db 'Hello world from KERNEL!', ENDL, 0
+msg_vesa_failed: db 'Failed vesa connection!', ENDL, 0

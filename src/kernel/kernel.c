@@ -128,23 +128,49 @@ void keyboard_handler_c(void) {
 }
 
 //kraj tipkovnice
+//video
+extern unsigned int framebuffer_addr;
+
+unsigned int get_framebuffer(void) {
+    return framebuffer_addr;   // no +0x20000 needed — this is a normal DS-relative read
+}
+
+//kraj video
+
+void delay(int amount) {
+    for (volatile int i = 0; i < amount; i++) {
+        // busy-wait: do nothing, just burn time
+    }
+}
+
+void put_pixel(int x, int y, unsigned char r, unsigned char g, unsigned char b) {
+    unsigned char* fb = (unsigned char*)get_framebuffer();
+    int offset = (y * 1024 + x) * 3;
+    fb[offset]     = r;
+    fb[offset + 1] = b;   // swapped to match this framebuffer's actual byte order
+    fb[offset + 2] = g;
+}
+
+void fill_screen(unsigned char r, unsigned char g, unsigned char b) {
+    for (int y = 0; y < 768; y++) {
+        for (int x = 0; x < 1024; x++) {
+            put_pixel(x, y, r, g, b);
+        }
+    }
+}
 
 void kernel_main(void) {
-    char* video = (char*) 0x98000;
+    unsigned char r = 0;
+    unsigned char g = 0;
+    unsigned char b = 0;
 
-    for (int i = 0; i < 80 * 25; i++) {
-        video[i * 2] = ' ';
-        video[i * 2 + 1] = 0x0F;
+
+    for(;;){
+        
+        put_pixel(100,100,15,15,15);
+        
     }
-
-    print("Kernel loaded. Try typing!\n");
-
-    idt_install();
-    set_idt_gate(0x21, (unsigned int)keyboard_handler_asm);
-    pic_remap();
-    __asm__ volatile ("sti");
-
-    for (;;) {
-        __asm__ volatile ("hlt");
-    }
+    
+ 
+    
 }
