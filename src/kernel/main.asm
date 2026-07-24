@@ -1,6 +1,15 @@
 bits 16
 global start
 global framebuffer_addr
+global screen_width
+global screen_height
+global screen_pitch
+global screen_bpp
+
+screen_width: dw 0
+screen_height: dw 0
+screen_pitch: dw 0
+screen_bpp: db 0
 
 %define ENDL 0x0D, 0x0A
 
@@ -10,8 +19,8 @@ start:
 
     call enable_a20
     call set_vesa_mode
-    call switch_to_pm
 
+    call switch_to_pm
     jmp $
 
 puts:
@@ -32,6 +41,30 @@ puts:
     pop si
     ret
 
+print_hex16:
+    push ax
+    push cx
+    mov cx, 4
+.loop:
+    rol ax, 4
+    push ax
+    and al, 0x0F
+    cmp al, 10
+    jl .digit
+    add al, 'A' - 10
+    jmp .store
+.digit:
+    add al, '0'
+.store:
+    mov ah, 0x0E
+    mov bh, 0
+    int 0x10
+    pop ax
+    loop .loop
+    pop cx
+    pop ax
+    ret
+
 enable_a20:
     in al, 0x92
     test al, 2
@@ -42,6 +75,8 @@ enable_a20:
 .after:
     ret
 
+
+
 set_vesa_mode:
     mov ax, 0x4F01
     mov cx, 0x118
@@ -51,11 +86,24 @@ set_vesa_mode:
     mov ax, 0x4F02
     mov bx, 0x4118
     int 0x10
-    cmp ax, 0x004F          ; VBE success code
+    cmp ax, 0x004F
     jne .vesa_failed
 
     mov eax, [vbe_mode_info + 40]
     mov [framebuffer_addr], eax
+
+    mov ax, [vbe_mode_info + 16]
+    mov [screen_pitch], ax
+
+    mov ax, [vbe_mode_info + 18]
+    mov [screen_width], ax
+
+    mov ax, [vbe_mode_info + 20]
+    mov [screen_height], ax
+
+    mov al, [vbe_mode_info + 25]
+    mov [screen_bpp], al
+
     ret
 
 .vesa_failed:
@@ -65,6 +113,7 @@ set_vesa_mode:
 
 vbe_mode_info: times 256 db 0
 framebuffer_addr: dd 0
+
 
 gdt_start:
     dq 0x0000000000000000
@@ -142,3 +191,9 @@ init_pm:
 [bits 16]
 msg_hello: db 'Hello world from KERNEL!', ENDL, 0
 msg_vesa_failed: db 'Failed vesa connection!', ENDL, 0
+msg_width:   db 'Width: ', 0
+msg_height:  db ENDL, 'Height: ', 0
+msg_pitch:   db ENDL, 'Pitch: ', 0
+msg_bpp:     db ENDL, 'BPP: ', 0
+msg_newline: db ENDL, 0
+msg_fb: db ENDL, 'Framebuffer: ', 0
