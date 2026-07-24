@@ -164,13 +164,6 @@ void kernel_main(void) {
     unsigned char g = 0;
     unsigned char b = 0;
 
+    
 
-    for(;;){
-        
-        put_pixel(100,100,15,15,15);
-        
-    }
-    
- 
-    
 }
