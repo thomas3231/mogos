@@ -4,24 +4,58 @@
 extern void timer_handler_asm(void);
 
 volatile unsigned int tick_count = 0;
+volatile unsigned int uptime_seconds = 0;
+volatile unsigned int idle_ticks = 0;
+volatile unsigned int busy_ticks = 0;
+volatile unsigned int cpu_usage_percent = 0;
+volatile unsigned int idle_state = 0;
 
 void timer_handler_c(void) {
     tick_count++;
+
+    if (tick_count % 100 == 0) {
+        uptime_seconds++;
+    }
+
+    if (idle_state) {
+        idle_ticks++;
+    } else {
+        busy_ticks++;
+    }
+
+    if (tick_count % 100 == 0) {
+        if (idle_ticks + busy_ticks != 0) {
+            cpu_usage_percent = (busy_ticks * 100) / (idle_ticks + busy_ticks);
+        }
+        idle_ticks = 0;
+        busy_ticks = 0;
+    }
 }
 
 void timer_install(void) {
-    // PIT runs at 1193182 Hz by default; divide it down to 100 Hz (a tick every 10ms)
     unsigned int divisor = 1193182 / 100;
 
-    outb(0x43, 0x36);                     // channel 0, mode 3, binary
-    outb(0x40, divisor & 0xFF);           // low byte
-    outb(0x40, (divisor >> 8) & 0xFF);    // high byte
+    outb(0x43, 0x36);
+    outb(0x40, divisor & 0xFF);
+    outb(0x40, (divisor >> 8) & 0xFF);
 
-    set_idt_gate(32, (unsigned int)timer_handler_asm);   // IRQ0 = interrupt 0x20 = 32
+    set_idt_gate(32, (unsigned int)timer_handler_asm);
 }
 
 unsigned int timer_get_ticks(void) {
     return tick_count;
+}
+
+unsigned int timer_get_uptime_seconds(void) {
+    return uptime_seconds;
+}
+
+unsigned int timer_get_cpu_usage_percent(void) {
+    return cpu_usage_percent;
+}
+
+void timer_set_idle_state(unsigned int is_idle) {
+    idle_state = is_idle;
 }
 
 void timer_wait(unsigned int ticks) {
