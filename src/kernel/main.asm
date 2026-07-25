@@ -172,6 +172,29 @@ keyboard_handler_asm:
     popa
     iretd
 
+extern timer_handler_c
+
+global timer_handler_asm
+timer_handler_asm:
+    pusha
+    call timer_handler_c
+    mov al, 0x20
+    out 0x20, al
+    popa
+    iretd
+
+extern mouse_handler_c
+
+global mouse_handler_asm
+mouse_handler_asm:
+    pusha
+    call mouse_handler_c
+    mov al, 0x20
+    out 0xA0, al        ; EOI to SLAVE PIC first
+    out 0x20, al        ; then EOI to master PIC
+    popa
+    iretd
+
 init_pm:
     mov ax, DATA_SEG
     mov ds, ax

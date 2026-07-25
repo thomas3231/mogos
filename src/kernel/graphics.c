@@ -1,4 +1,5 @@
 #include "graphics.h"
+#include "palette.h"
 
 extern unsigned int framebuffer_addr;
 extern unsigned short screen_width;
@@ -134,6 +135,10 @@ void draw_rect(int x, int y, int width, int height, unsigned char r, unsigned ch
             put_pixel(col, row, r, g, b);
         }
     }
+}
+
+void draw_rect_c(int x, int y, int w, int h, int color_index) {
+    draw_rect(x, y, w, h, palette[color_index][0], palette[color_index][1], palette[color_index][2]);
 }
 
 void fill_screen(unsigned char r, unsigned char g, unsigned char b) {
