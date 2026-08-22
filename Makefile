@@ -35,8 +35,8 @@ $(BUILD_DIR)/bootloader.bin: always
 #
 kernel: $(BUILD_DIR)/kernel.bin
 
-$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/mouse.o 
-	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/mouse.o --oformat binary
+$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o 
+	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o  --oformat binary
 
 $(BUILD_DIR)/kernel_entry.o: always $(SRC_DIR)/kernel/main.asm
 	$(ASM) $(SRC_DIR)/kernel/main.asm -f elf32 -o $(BUILD_DIR)/kernel_entry.o
@@ -61,7 +61,9 @@ $(BUILD_DIR)/palette.o: always $(SRC_DIR)/kernel/palette.c
 
 $(BUILD_DIR)/mouse.o: always $(SRC_DIR)/kernel/mouse.c
 	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/mouse.c -o $(BUILD_DIR)/mouse.o
-	
+
+$(BUILD_DIR)/exceptions.o: always $(SRC_DIR)/kernel/exceptions.c
+	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/exceptions.c -o $(BUILD_DIR)/exceptions.o
 
 #
 # Tools

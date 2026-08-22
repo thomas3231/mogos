@@ -20,4 +20,11 @@ void fill_screen(unsigned char r, unsigned char g, unsigned char b);
 void draw_char(int x, int y, char c, unsigned char r, unsigned char g, unsigned char b, int scale);
 void print_char(char c);
 
+void draw_status_bar(void);
+void draw_text_line(int x, int y, const char* text);
+void clear_status_text_area(void);
+void draw_status_text(void);
+void render_status_frame(void);
+
+
 #endif

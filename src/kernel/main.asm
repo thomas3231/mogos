@@ -155,6 +155,47 @@ switch_to_pm:
 
 [bits 32]
 
+%macro EXCEPTION_NOERR 1
+global exception_stub_%1
+exception_stub_%1:
+    push dword %1
+    call exception_common
+%endmacro
+
+%macro EXCEPTION_ERR 1
+global exception_stub_%1
+exception_stub_%1:
+    ; CPU already pushed an error code for this one -- don't push our own
+    push dword %1
+    call exception_common
+%endmacro
+
+extern exception_handler_c
+
+exception_common:
+    pusha
+    mov eax, [esp + 36]     ; retrieve the vector number we pushed
+    push eax
+    call exception_handler_c
+    ; no return -- exception_handler_c halts permanently
+    add esp, 4
+    popa
+    add esp, 4
+    iretd
+
+EXCEPTION_NOERR 0
+EXCEPTION_NOERR 1
+EXCEPTION_NOERR 2
+EXCEPTION_NOERR 3
+EXCEPTION_NOERR 4
+EXCEPTION_NOERR 5
+EXCEPTION_NOERR 6
+EXCEPTION_NOERR 7
+EXCEPTION_ERR   8
+EXCEPTION_ERR   13
+EXCEPTION_ERR   14
+
+
 global idt_load
 idt_load:
     mov eax, [esp+4]
