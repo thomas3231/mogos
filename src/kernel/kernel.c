@@ -4,6 +4,7 @@
 #include "heap.h"
 #include "palette.h"
 #include "exceptions.h"
+#include "rtc.h"
 
 extern void keyboard_handler_asm(void);
 

@@ -1,7 +1,7 @@
 #include "graphics.h"
 #include "palette.h"
 #include "timer.h"
-
+#include "rtc.h"
 extern unsigned int framebuffer_addr;
 extern unsigned short screen_width;
 extern unsigned short screen_height;
@@ -233,6 +233,7 @@ void draw_status_text(void) {
     unsigned int seconds = uptime % 60;
     char buffer[32];
     char cpu_buffer[16];
+    char clock_buffer[16];
     int pos = 0;
 
     buffer[pos++] = 'U';
@@ -268,6 +269,25 @@ void draw_status_text(void) {
     cpu_buffer[pos] = '\0';
 
     draw_text_line(220, 4, cpu_buffer);
+
+    // --- clock, top-right ---
+    struct rtc_time now;
+    rtc_read(&now);
+
+    pos = 0;
+    clock_buffer[pos++] = '0' + (now.hours / 10);
+    clock_buffer[pos++] = '0' + (now.hours % 10);
+    clock_buffer[pos++] = ':';
+    clock_buffer[pos++] = '0' + (now.minutes / 10);
+    clock_buffer[pos++] = '0' + (now.minutes % 10);
+    clock_buffer[pos++] = ':';
+    clock_buffer[pos++] = '0' + (now.seconds / 10);
+    clock_buffer[pos++] = '0' + (now.seconds % 10);
+    clock_buffer[pos] = '\0';
+
+    // right-align: screen width minus (8 chars * ~9px per char) minus a small margin
+    int clock_x = screen.width - (8 * 9) - 8;
+    draw_text_line(clock_x, 4, clock_buffer);
 }
 
 void render_status_frame(void) {
