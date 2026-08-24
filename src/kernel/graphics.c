@@ -2,6 +2,7 @@
 #include "palette.h"
 #include "timer.h"
 #include "rtc.h"
+#include "heap.h"
 extern unsigned int framebuffer_addr;
 extern unsigned short screen_width;
 extern unsigned short screen_height;
@@ -111,6 +112,8 @@ const unsigned char font8x8[96][8] = {
 int term_cursor_x = 0;
 int term_cursor_y = 0;
 
+unsigned char* backbuffer;
+
 void screen_init(void) {
     screen.framebuffer = (unsigned char*)(framebuffer_addr - 0x20000); 
     screen.width = screen_width;
@@ -123,11 +126,11 @@ void put_pixel(int x, int y, unsigned char r, unsigned char g, unsigned char b) 
     if (x < 0 || y < 0 || x >= screen.width || y >= screen.height) return;
 
     int bytes_per_pixel = screen.bpp / 8;
-    int offset = (y * screen.pitch) + (x * bytes_per_pixel);
+    int offset = y * screen.pitch + x * bytes_per_pixel;
 
-    screen.framebuffer[offset]     = b; 
-    screen.framebuffer[offset + 1] = g; 
-    screen.framebuffer[offset + 2] = r; 
+    backbuffer[offset]     = b;
+    backbuffer[offset + 1] = g;
+    backbuffer[offset + 2] = r;
 }
 
 void draw_rect(int x, int y, int width, int height, unsigned char r, unsigned char g, unsigned char b) {
@@ -318,4 +321,21 @@ void render_status_frame(void) {
     }
 
     last_render_tick = current_tick;
+}
+
+unsigned char* backbuffer;
+
+void backbuffer_init(void) {
+    unsigned int buffer_size = screen.pitch * screen.height;
+    backbuffer = (unsigned char*)kmalloc(buffer_size);
+}
+
+void screen_swap(void) {
+    unsigned int buffer_size = screen.pitch * screen.height;
+    unsigned char* src = backbuffer;
+    unsigned char* dst = screen.framebuffer;
+
+    for (unsigned int i = 0; i < buffer_size; i++) {
+        dst[i] = src[i];
+    }
 }

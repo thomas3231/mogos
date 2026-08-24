@@ -1,7 +1,7 @@
 #include "heap.h"
 
 #define HEAP_START 0x200000
-#define HEAP_SIZE  0x100000
+#define HEAP_SIZE  0x800000   // 8MB — comfortably covers even a large VESA framebuffer
 
 struct block_header {
     unsigned int size;

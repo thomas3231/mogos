@@ -10,6 +10,7 @@ struct screen_info {
 };
 
 extern struct screen_info screen;
+extern unsigned char* backbuffer;
 
 void screen_init(void);
 void put_pixel(int x, int y, unsigned char r, unsigned char g, unsigned char b);
@@ -25,6 +26,10 @@ void draw_text_line(int x, int y, const char* text);
 void clear_status_text_area(void);
 void draw_status_text(void);
 void render_status_frame(void);
+
+
+void backbuffer_init(void);
+void screen_swap(void);
 
 
 #endif

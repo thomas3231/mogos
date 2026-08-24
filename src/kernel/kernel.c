@@ -12,6 +12,7 @@ extern void keyboard_handler_asm(void);
 void kernel_main(void) {
     screen_init();
     heap_init();
+    backbuffer_init();
 
     idt_install();
     exceptions_install();
@@ -21,14 +22,19 @@ void kernel_main(void) {
 
     fill_screen(0x10, 0x10, 0x10);
     render_status_frame();
+    screen_swap();
 
     __asm__ volatile ("sti");
 
-    
+    beep(880);
+    timer_wait(15);
+    nosound();
+
     for (;;) {
         timer_set_idle_state(1);
         __asm__ volatile ("hlt");
         timer_set_idle_state(0);
         render_status_frame();
+        screen_swap();
     }
 }
