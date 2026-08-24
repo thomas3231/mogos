@@ -1,1 +1,1 @@
-qemu-system-i386 -fda build/main_floppy.img
+qemu-system-i386 -fda build/main_floppy.img -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0

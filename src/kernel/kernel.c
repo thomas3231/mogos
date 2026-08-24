@@ -5,6 +5,7 @@
 #include "palette.h"
 #include "exceptions.h"
 #include "rtc.h"
+#include "speaker.h"
 
 extern void keyboard_handler_asm(void);
 
@@ -23,6 +24,7 @@ void kernel_main(void) {
 
     __asm__ volatile ("sti");
 
+    
     for (;;) {
         timer_set_idle_state(1);
         __asm__ volatile ("hlt");

@@ -35,8 +35,8 @@ $(BUILD_DIR)/bootloader.bin: always
 #
 kernel: $(BUILD_DIR)/kernel.bin
 
-$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o
-	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o --oformat binary
+$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o
+	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o --oformat binary
 
 $(BUILD_DIR)/kernel_entry.o: always $(SRC_DIR)/kernel/main.asm
 	$(ASM) $(SRC_DIR)/kernel/main.asm -f elf32 -o $(BUILD_DIR)/kernel_entry.o
@@ -64,6 +64,9 @@ $(BUILD_DIR)/exceptions.o: always $(SRC_DIR)/kernel/exceptions.c
 
 $(BUILD_DIR)/rtc.o: always $(SRC_DIR)/kernel/rtc.c
 	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/rtc.c -o $(BUILD_DIR)/rtc.o
+
+$(BUILD_DIR)/speaker.o: always $(SRC_DIR)/kernel/speaker.c
+	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/speaker.c -o $(BUILD_DIR)/speaker.o
 
 #
 # Tools
