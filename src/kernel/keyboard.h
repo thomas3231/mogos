@@ -14,4 +14,8 @@ void close_active_window(void);
 void toggle_maximize(void);
 void kill_active_task(void);
 
+// keyboard.h
+void outw(unsigned short port, unsigned short val);
+unsigned short inw(unsigned short port);
+
 #endif

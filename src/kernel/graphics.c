@@ -330,12 +330,20 @@ void backbuffer_init(void) {
     backbuffer = (unsigned char*)kmalloc(buffer_size);
 }
 
+
 void screen_swap(void) {
     unsigned int buffer_size = screen.pitch * screen.height;
-    unsigned char* src = backbuffer;
-    unsigned char* dst = screen.framebuffer;
+    unsigned int dword_count = buffer_size / 4;
 
-    for (unsigned int i = 0; i < buffer_size; i++) {
-        dst[i] = src[i];
+    fast_copy(screen.framebuffer, backbuffer, dword_count);
+
+    // handle any leftover bytes if buffer_size isn't evenly divisible by 4
+    unsigned int remainder = buffer_size % 4;
+    if (remainder) {
+        unsigned char* dst = screen.framebuffer + (dword_count * 4);
+        unsigned char* src = backbuffer + (dword_count * 4);
+        for (unsigned int i = 0; i < remainder; i++) {
+            dst[i] = src[i];
+        }
     }
 }

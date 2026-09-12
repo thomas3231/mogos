@@ -155,6 +155,25 @@ switch_to_pm:
 
 [bits 32]
 
+global fast_copy
+fast_copy:
+    push ebp
+    mov ebp, esp
+    push esi
+    push edi
+
+    mov edi, [ebp + 8]      ; destination pointer (1st arg)
+    mov esi, [ebp + 12]     ; source pointer (2nd arg)
+    mov ecx, [ebp + 16]     ; number of DWORDs to copy (3rd arg)
+
+    rep movsd
+
+    pop edi
+    pop esi
+    pop ebp
+    ret
+
+
 %macro EXCEPTION_NOERR 1
 global exception_stub_%1
 exception_stub_%1:

@@ -113,3 +113,14 @@ void toggle_maximize(void) {
 void kill_active_task(void) {
     // TODO: implement once window system exists
 }
+
+// keyboard.c
+void outw(unsigned short port, unsigned short val) {
+    __asm__ volatile ("outw %0, %1" : : "a"(val), "Nd"(port));
+}
+
+unsigned short inw(unsigned short port) {
+    unsigned short ret;
+    __asm__ volatile ("inw %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}

@@ -31,5 +31,6 @@ void render_status_frame(void);
 void backbuffer_init(void);
 void screen_swap(void);
 
+extern void fast_copy(void* dest, void* src, unsigned int dword_count);
 
 #endif

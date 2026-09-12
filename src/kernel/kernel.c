@@ -6,6 +6,7 @@
 #include "exceptions.h"
 #include "rtc.h"
 #include "speaker.h"
+#include "ata.h"
 
 extern void keyboard_handler_asm(void);
 
@@ -26,9 +27,7 @@ void kernel_main(void) {
 
     __asm__ volatile ("sti");
 
-    beep(880);
-    timer_wait(15);
-    nosound();
+    play_boot_jingle();
 
     for (;;) {
         timer_set_idle_state(1);
