@@ -7,8 +7,12 @@
 #include "rtc.h"
 #include "speaker.h"
 #include "ata.h"
+#include "desktop.h"
 
 extern void keyboard_handler_asm(void);
+
+
+#include "splash.h"
 
 void kernel_main(void) {
     screen_init();
@@ -21,19 +25,15 @@ void kernel_main(void) {
     set_idt_gate(33, (unsigned int)keyboard_handler_asm);
     timer_install();
 
-    fill_screen(0x10, 0x10, 0x10);
-    render_status_frame();
-    screen_swap();
-
     __asm__ volatile ("sti");
 
-    play_boot_jingle();
+    splash_run();
+    in_splash = 0;
+
+    desktop_init();
+    desktop_draw();
 
     for (;;) {
-        timer_set_idle_state(1);
         __asm__ volatile ("hlt");
-        timer_set_idle_state(0);
-        render_status_frame();
-        screen_swap();
     }
 }

@@ -18,4 +18,6 @@ void kill_active_task(void);
 void outw(unsigned short port, unsigned short val);
 unsigned short inw(unsigned short port);
 
+extern int in_splash;
+
 #endif

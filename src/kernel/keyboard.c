@@ -1,4 +1,14 @@
+
+
+
+
+
 #include "keyboard.h"
+
+#include "desktop.h"
+
+#include "splash.h"
+
 #include "graphics.h"
 
 struct idt_entry {
@@ -71,32 +81,7 @@ int ctrl_pressed = 0;
 int alt_pressed = 0;
 int shift_pressed = 0;
 
-// scancodes: left ctrl=0x1D, left alt=0x38, left shift=0x2A, right shift=0x36
-void keyboard_handler_c(void) {
-    unsigned char scancode = inb(0x60);
-    int is_release = scancode & 0x80;
-    unsigned char code = scancode & 0x7F;
 
-    if (code == 0x1D) { ctrl_pressed = !is_release; return; }
-    if (code == 0x38) { alt_pressed = !is_release; return; }
-    if (code == 0x2A || code == 0x36) { shift_pressed = !is_release; return; }
-
-    if (is_release) return;
-
-    // --- global shortcut interception happens BEFORE normal typing ---
-    if (ctrl_pressed && alt_pressed) {
-        if (code == 0x14) { /* 'T' */ spawn_terminal(); return; }
-        if (code == 0x2E) { /* 'C' */ close_active_window(); return; }
-        if (code == 0x32) { /* 'M' */ toggle_maximize(); return; }
-        if (code == 0x2D) { /* 'X' */ kill_active_task(); return; }
-    }
-
-    // normal typing, unchanged
-    char c = scancode_to_ascii[scancode];
-    if (c) {
-        print_char(c);
-    }
-}
 
 void spawn_terminal(void) {
     // TODO: implement once window system exists
@@ -123,4 +108,57 @@ unsigned short inw(unsigned short port) {
     unsigned short ret;
     __asm__ volatile ("inw %1, %0" : "=a"(ret) : "Nd"(port));
     return ret;
+}
+
+
+
+
+int extended_scancode = 0;
+
+
+int in_splash = 1;   // starts true, set false once splash_run() returns
+
+void keyboard_handler_c(void) {
+    unsigned char scancode = inb(0x60);
+
+    if (scancode == 0xE0) {
+        extended_scancode = 1;
+        return;
+    }
+
+    int is_release = scancode & 0x80;
+    unsigned char code = scancode & 0x7F;
+
+    if (code == 0x1D) { ctrl_pressed = !is_release; extended_scancode = 0; return; }
+    if (code == 0x38) { alt_pressed = !is_release; extended_scancode = 0; return; }
+    if (code == 0x2A || code == 0x36) { shift_pressed = !is_release; extended_scancode = 0; return; }
+
+    if (is_release) { extended_scancode = 0; return; }
+
+    if (in_splash) {
+        if (code == 0x1C) {   // Enter
+            splash_enter_pressed = 1;
+        }
+        extended_scancode = 0;
+        return;
+    }
+
+    if (extended_scancode) {
+        extended_scancode = 0;
+        if (code == 0x48) { desktop_handle_key(1); return; }
+        if (code == 0x50) { desktop_handle_key(2); return; }
+        if (code == 0x4B) { desktop_handle_key(3); return; }
+        if (code == 0x4D) { desktop_handle_key(4); return; }
+        return;
+    }
+
+    if (ctrl_pressed && code == 0x23) {
+        go_home();
+        return;
+    }
+
+    char c = scancode_to_ascii[scancode];
+    if (c) {
+        desktop_handle_key(c);
+    }
 }
