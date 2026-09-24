@@ -4,9 +4,13 @@
 #include "timer.h"
 #include "rtc.h"
 #include "keyboard.h"
+#include "snake.h"
+
+
 
 int app_running = 0;
 int focus = 0;   // 0 = menu, 1 = terminal
+unsigned int desktop_last_draw_tick = 0;
 
 void (*current_app_key_handler)(char c) = 0;
 
@@ -16,22 +20,10 @@ struct menu_item {
     char label[24];
 };
 
-void snake_handle_key(char c) {
-    // placeholder -- real Snake logic goes here later
-}
-
-void run_snake_stub(void) {
+void run_snake(void) {
     app_running = 1;
-    current_app_key_handler = snake_handle_key;
-
-    fill_screen(0x00, 0x00, 0x00);
-    int x = 20;
-    char* msg = "SNAKE";
-    for (int i = 0; msg[i]; i++) {
-        draw_char(x, 20, msg[i], 0x00, 0xFF, 0x00, 2);
-        x += 18;
-    }
-    screen_swap();
+    current_app_key_handler = snake_key_handler;
+    snake_start();
 }
 
 void about_handle_key(char c) {
@@ -69,8 +61,9 @@ void run_about(void) {
         "",
         "This is MogOS.",
         "Ctrl+H to return to safety.",
+        "This was AI generated btw",
     };
-    int line_count = 23;
+    int line_count = sizeof(lines) / sizeof(lines[0]);
 
     int y = STATUS_BAR_HEIGHT + 6;
     for (int i = 0; i < line_count; i++) {
@@ -292,6 +285,7 @@ void desktop_init(void) {
 }
 
 void desktop_draw(void) {
+    desktop_last_draw_tick = timer_get_ticks();
     fill_screen(0x10, 0x10, 0x10);
 
     draw_status_bar_thin();
@@ -358,7 +352,7 @@ void run_terminal_command(char* cmd) {
     if (str_equals(cmd, "ping")) {
         terminal_print_line("pong");
     } else if (str_equals(cmd, "run snake")) {
-        run_snake_stub();
+        run_snake();
     } else if (str_equals(cmd, "about")) {
         run_about();
     } else if (str_equals(cmd, "settings")) {
@@ -408,7 +402,7 @@ void desktop_handle_key(char c) {
             desktop_draw();
         } else if (c == '\n') {
             if (str_equals(menu_items[menu_selected].label, "Snake")) {
-                run_snake_stub();
+                run_snake();
             } else if (str_equals(menu_items[menu_selected].label, "About")) {
                 run_about();
             } else if (str_equals(menu_items[menu_selected].label, "Settings")) {
@@ -420,7 +414,7 @@ void desktop_handle_key(char c) {
             run_terminal_command(terminal_buffer);
             terminal_pos = 0;
             terminal_buffer[0] = '\0';
-            desktop_draw();
+            if (!app_running) desktop_draw();
         } else if (c == '\b') {
             if (terminal_pos > 0) {
                 terminal_pos--;
@@ -434,6 +428,14 @@ void desktop_handle_key(char c) {
             }
             desktop_draw();
         }
+    }
+}
+
+void desktop_update(void) {
+    if (app_running && current_app_key_handler == snake_key_handler) {
+        snake_update();
+    } else if (!app_running && timer_get_ticks() - desktop_last_draw_tick >= 100) {
+        desktop_draw();
     }
 }
 

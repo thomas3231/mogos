@@ -21,4 +21,7 @@ extern const unsigned char palette[17][3];
 #define COLOR_WHITE        15
 #define COLOR_GRASSGREEN   16
 
+// palette.h
+void palette_lookup(unsigned char index, unsigned char* r, unsigned char* g, unsigned char* b);
+
 #endif

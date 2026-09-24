@@ -3,7 +3,8 @@
 #include "timer.h"
 #include "desktop.h"
 
-#define NUM_STREAKS 14
+#define NUM_STREAKS 72
+#define MATRIX_TRAIL_LENGTH 12
 
 volatile int splash_enter_pressed = 0;
 
@@ -11,10 +12,10 @@ int streak_x[NUM_STREAKS];
 int streak_y[NUM_STREAKS];
 int streak_speed[NUM_STREAKS];
 
-unsigned int rand_seed = 12345;
+unsigned int rand_seed = 54322;
 
 int simple_rand(void) {
-    rand_seed = rand_seed * 1103515245 + 12345;
+    rand_seed = rand_seed * 1103515245 + 12445;
     return (rand_seed >> 16) & 0x7FFF;
 }
 
@@ -22,7 +23,7 @@ void splash_init_streaks(void) {
     for (int i = 0; i < NUM_STREAKS; i++) {
         streak_x[i] = (simple_rand() % (screen.width / 9)) * 9;
         streak_y[i] = -(simple_rand() % screen.height);
-        streak_speed[i] = 1 + (simple_rand() % 3);
+        streak_speed[i] = 3 + (simple_rand() % 6);
     }
 }
 
@@ -30,12 +31,12 @@ void splash_draw_background(void) {
     fill_screen(0x00, 0x00, 0x00);
 
     for (int i = 0; i < NUM_STREAKS; i++) {
-        for (int trail = 0; trail < 6; trail++) {
+        for (int trail = 0; trail < MATRIX_TRAIL_LENGTH; trail++) {
             int y = streak_y[i] - (trail * 10);
             if (y < 0 || y >= screen.height) continue;
 
             char c = '0' + ((streak_x[i] + y + trail) % 10);
-            unsigned char shade = 0xFF - (trail * 35);
+            unsigned char shade = 0xFF - (trail * 20);
             if (shade < 0x20) shade = 0x20;
 
             draw_char(streak_x[i], y, c, 0x00, shade, 0x00, 1);
@@ -45,7 +46,7 @@ void splash_draw_background(void) {
         if (streak_y[i] > screen.height + 60) {
             streak_y[i] = -(simple_rand() % 60);
             streak_x[i] = (simple_rand() % (screen.width / 9)) * 9;
-            streak_speed[i] = 1 + (simple_rand() % 3);
+            streak_speed[i] = 3 + (simple_rand() % 6);
         }
     }
 }

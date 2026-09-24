@@ -3,6 +3,7 @@
 
 #define CMOS_ADDRESS 0x70
 #define CMOS_DATA    0x71
+#define RTC_LOCAL_HOUR_OFFSET 2
 
 unsigned char cmos_read(unsigned char reg) {
     outb(CMOS_ADDRESS, reg);
@@ -32,7 +33,7 @@ void rtc_read(struct rtc_time* out) {
     // most hardware/emulators default to BCD encoding -- convert to normal binary
     out->seconds = bcd_to_bin(second);
     out->minutes = bcd_to_bin(minute);
-    out->hours   = bcd_to_bin(hour);
+    out->hours   = (bcd_to_bin(hour) + RTC_LOCAL_HOUR_OFFSET) % 24;
     out->day     = bcd_to_bin(day);
     out->month   = bcd_to_bin(month);
     out->year    = bcd_to_bin(year);
