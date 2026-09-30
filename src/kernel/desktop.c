@@ -51,8 +51,7 @@ void run_about(void) {
         "the sacred glow of QEMU.",
         "",
         "Bootloaders crashed. IDTs",
-        "misfired. The mouse betrayed",
-        "him. Still he pressed on.",
+        "misfired. Still he pressed on.",
         "",
         "Every line of this OS was",
         "forged by his own two hands,",
@@ -152,6 +151,151 @@ int terminal_pos = 0;
 #define TERMINAL_MAX_LINES 12
 char terminal_history[TERMINAL_MAX_LINES][40];
 int terminal_line_count = 0;
+
+#define EDITOR_CAPACITY 2048
+#define EDITOR_CONTENT_X 4
+#define EDITOR_CONTENT_Y (STATUS_BAR_HEIGHT + 16)
+#define EDITOR_CHAR_WIDTH 9
+#define EDITOR_LINE_HEIGHT 10
+
+char editor_buffer[EDITOR_CAPACITY];
+int editor_length = 0;
+int editor_cursor = 0;
+int editor_scroll_row = 0;
+
+void editor_position_to_visual(int position, int columns, int* row, int* column) {
+    *row = 0;
+    *column = 0;
+
+    for (int i = 0; i < position; i++) {
+        if (editor_buffer[i] == '\n') {
+            (*row)++;
+            *column = 0;
+        } else {
+            (*column)++;
+            if (*column >= columns) {
+                (*row)++;
+                *column = 0;
+            }
+        }
+    }
+}
+
+int editor_vertical_target(int target_row, int target_column, int columns) {
+    int best_position = editor_cursor;
+    int best_distance = columns + 1;
+    int found = 0;
+
+    for (int position = 0; position <= editor_length; position++) {
+        int row, column;
+        editor_position_to_visual(position, columns, &row, &column);
+        if (row != target_row) continue;
+
+        int distance = column > target_column ? column - target_column : target_column - column;
+        if (!found || distance < best_distance) {
+            best_position = position;
+            best_distance = distance;
+            found = 1;
+        }
+    }
+
+    return best_position;
+}
+
+void editor_draw(void) {
+    fill_screen(0x10, 0x10, 0x10);
+    draw_rect(0, 0, screen.width, STATUS_BAR_HEIGHT, 0x00, 0x00, 0x00);
+
+    char* heading = "TEXT EDITOR  ENTER:new line  arrows:move  BACKSPACE:delete  CTRL+H:exit";
+    for (int i = 0; heading[i]; i++) {
+        draw_char(4 + i * EDITOR_CHAR_WIDTH, 1, heading[i], 0xFF, 0xFF, 0xFF, 1);
+    }
+
+    int columns = (screen.width - EDITOR_CONTENT_X * 2) / EDITOR_CHAR_WIDTH;
+    int visible_rows = (screen.height - EDITOR_CONTENT_Y) / EDITOR_LINE_HEIGHT;
+    if (columns < 1 || visible_rows < 1) {
+        screen_swap();
+        return;
+    }
+
+    int cursor_row, cursor_column;
+    editor_position_to_visual(editor_cursor, columns, &cursor_row, &cursor_column);
+    if (cursor_row < editor_scroll_row) editor_scroll_row = cursor_row;
+    if (cursor_row >= editor_scroll_row + visible_rows) {
+        editor_scroll_row = cursor_row - visible_rows + 1;
+    }
+
+    int row = 0;
+    int column = 0;
+    for (int i = 0; i <= editor_length; i++) {
+        if (i == editor_cursor && row >= editor_scroll_row && row < editor_scroll_row + visible_rows) {
+            int caret_x = EDITOR_CONTENT_X + column * EDITOR_CHAR_WIDTH;
+            int caret_y = EDITOR_CONTENT_Y + (row - editor_scroll_row) * EDITOR_LINE_HEIGHT;
+            draw_rect(caret_x, caret_y, 2, 8, 0x00, 0xFF, 0x70);
+        }
+
+        if (i == editor_length) break;
+
+        if (editor_buffer[i] == '\n') {
+            row++;
+            column = 0;
+        } else {
+            if (row >= editor_scroll_row && row < editor_scroll_row + visible_rows) {
+                int x = EDITOR_CONTENT_X + column * EDITOR_CHAR_WIDTH;
+                int y = EDITOR_CONTENT_Y + (row - editor_scroll_row) * EDITOR_LINE_HEIGHT;
+                draw_char(x, y, editor_buffer[i], 0xE0, 0xE0, 0xE0, 1);
+            }
+            column++;
+            if (column >= columns) {
+                row++;
+                column = 0;
+            }
+        }
+    }
+
+    screen_swap();
+}
+
+void editor_handle_key(char c) {
+    int columns = (screen.width - EDITOR_CONTENT_X * 2) / EDITOR_CHAR_WIDTH;
+    int cursor_row, cursor_column;
+    editor_position_to_visual(editor_cursor, columns, &cursor_row, &cursor_column);
+
+    if (c == 3 && editor_cursor > 0) {
+        editor_cursor--;
+    } else if (c == 4 && editor_cursor < editor_length) {
+        editor_cursor++;
+    } else if (c == 1 && cursor_row > 0) {
+        editor_cursor = editor_vertical_target(cursor_row - 1, cursor_column, columns);
+    } else if (c == 2) {
+        editor_cursor = editor_vertical_target(cursor_row + 1, cursor_column, columns);
+    } else if (c == '\b' && editor_cursor > 0) {
+        for (int i = editor_cursor - 1; i < editor_length; i++) {
+            editor_buffer[i] = editor_buffer[i + 1];
+        }
+        editor_cursor--;
+        editor_length--;
+    } else if ((c == '\n' || (c >= 32 && c < 127)) && editor_length < EDITOR_CAPACITY - 1) {
+        for (int i = editor_length; i > editor_cursor; i--) {
+            editor_buffer[i] = editor_buffer[i - 1];
+        }
+        editor_buffer[editor_cursor++] = c;
+        editor_length++;
+        editor_buffer[editor_length] = '\0';
+    }
+
+    editor_draw();
+}
+
+void run_text_editor(void) {
+    app_running = 1;
+    current_app_key_handler = editor_handle_key;
+    editor_length = 0;
+    editor_cursor = 0;
+    editor_scroll_row = 0;
+    editor_buffer[0] = '\0';
+    editor_draw();
+}
 
 void draw_status_bar_thin(void) {
     unsigned int uptime = timer_get_uptime_seconds();
@@ -403,6 +547,8 @@ void desktop_handle_key(char c) {
         } else if (c == '\n') {
             if (str_equals(menu_items[menu_selected].label, "Snake")) {
                 run_snake();
+            } else if (str_equals(menu_items[menu_selected].label, "Text Editor")) {
+                run_text_editor();
             } else if (str_equals(menu_items[menu_selected].label, "About")) {
                 run_about();
             } else if (str_equals(menu_items[menu_selected].label, "Settings")) {
