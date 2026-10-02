@@ -34,7 +34,9 @@ void kernel_main(void) {
     desktop_draw();
 
     for (;;) {
+           timer_set_idle_state(1);
         __asm__ volatile ("hlt");
+           timer_set_idle_state(0);
         desktop_update();
     }
 }

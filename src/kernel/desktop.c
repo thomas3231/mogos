@@ -5,6 +5,8 @@
 #include "rtc.h"
 #include "keyboard.h"
 #include "snake.h"
+#include "ata.h"
+#include "speaker.h"
 
 
 
@@ -77,17 +79,21 @@ void run_about(void) {
     screen_swap();
 }
 
-int setting_toggle_a = 0;
-int setting_toggle_b = 1;
+int editor_green_text = 0;
+int clock_show_seconds = 1;
+volatile int boot_jingle_pending = 0;
 
 void run_settings(void);
 
 void settings_handle_key(char c) {
     if (c == 'a' || c == 'A') {
-        setting_toggle_a = !setting_toggle_a;
+        editor_green_text = !editor_green_text;
         run_settings();
     } else if (c == 'b' || c == 'B') {
-        setting_toggle_b = !setting_toggle_b;
+        boot_jingle_pending = 1;
+        run_settings();
+    } else if (c == 'c' || c == 'C') {
+        clock_show_seconds = !clock_show_seconds;
         run_settings();
     }
 }
@@ -106,7 +112,7 @@ void run_settings(void) {
     }
     y += 20;
 
-    char* toggle_a_label = setting_toggle_a ? "[A] Grass green mode: ON" : "[A] Grass green mode: OFF";
+    char* toggle_a_label = editor_green_text ? "[A] Green editor text: ON" : "[A] Green editor text: OFF";
     x = 4;
     for (int i = 0; toggle_a_label[i]; i++) {
         draw_char(x, y, toggle_a_label[i], 0xFF, 0xFF, 0xFF, 1);
@@ -114,15 +120,23 @@ void run_settings(void) {
     }
     y += 12;
 
-    char* toggle_b_label = setting_toggle_b ? "[B] Boot jingle: ON" : "[B] Boot jingle: OFF";
+    char* toggle_b_label = "[B] Play boot jingle once";
     x = 4;
     for (int i = 0; toggle_b_label[i]; i++) {
         draw_char(x, y, toggle_b_label[i], 0xFF, 0xFF, 0xFF, 1);
         x += 9;
     }
+    y += 12;
+
+    char* toggle_c_label = clock_show_seconds ? "[C] Clock seconds: ON" : "[C] Clock seconds: OFF";
+    x = 4;
+    for (int i = 0; toggle_c_label[i]; i++) {
+        draw_char(x, y, toggle_c_label[i], 0xFF, 0xFF, 0xFF, 1);
+        x += 9;
+    }
     y += 20;
 
-    char* hint = "Press A or B to toggle. Ctrl+H to exit.";
+    char* hint = "A/C toggle. B plays jingle. Ctrl+H exits.";
     x = 4;
     for (int i = 0; hint[i]; i++) {
         draw_char(x, y, hint[i], 0x88, 0x88, 0x88, 1);
@@ -137,10 +151,8 @@ struct menu_item menu_items[] = {
     { "Text Editor" },
     { "About" },
     { "Settings" },
-    { "Placeholder 5" },
-    { "Placeholder 6" },
 };
-int menu_item_count = 6;
+int menu_item_count = 4;
 int menu_selected = 0;
 int menu_scroll_offset = 0;
 #define MENU_VISIBLE_ROWS 8
@@ -152,16 +164,31 @@ int terminal_pos = 0;
 char terminal_history[TERMINAL_MAX_LINES][40];
 int terminal_line_count = 0;
 
-#define EDITOR_CAPACITY 2048
+#define EDITOR_CAPACITY 2043
 #define EDITOR_CONTENT_X 4
 #define EDITOR_CONTENT_Y (STATUS_BAR_HEIGHT + 16)
 #define EDITOR_CHAR_WIDTH 9
 #define EDITOR_LINE_HEIGHT 10
+#define EDITOR_SAVE_LBA 1
+#define EDITOR_SAVE_SECTORS 5
+#define EDITOR_SAVE_BYTES (EDITOR_SAVE_SECTORS * 512)
+#define EDITOR_SAVE_HEADER 6
 
 char editor_buffer[EDITOR_CAPACITY];
+unsigned char editor_save_image[EDITOR_SAVE_BYTES];
+char editor_status[48];
 int editor_length = 0;
 int editor_cursor = 0;
 int editor_scroll_row = 0;
+
+void editor_set_status(const char* message) {
+    int i = 0;
+    while (message[i] && i < (int)sizeof(editor_status) - 1) {
+        editor_status[i] = message[i];
+        i++;
+    }
+    editor_status[i] = '\0';
+}
 
 void editor_position_to_visual(int position, int columns, int* row, int* column) {
     *row = 0;
@@ -206,9 +233,12 @@ void editor_draw(void) {
     fill_screen(0x10, 0x10, 0x10);
     draw_rect(0, 0, screen.width, STATUS_BAR_HEIGHT, 0x00, 0x00, 0x00);
 
-    char* heading = "TEXT EDITOR  ENTER:new line  arrows:move  BACKSPACE:delete  CTRL+H:exit";
+    char* heading = "EDITOR  Ctrl+S:save Ctrl+O:load Enter:new line arrows:move Ctrl+H:exit";
     for (int i = 0; heading[i]; i++) {
         draw_char(4 + i * EDITOR_CHAR_WIDTH, 1, heading[i], 0xFF, 0xFF, 0xFF, 1);
+    }
+    for (int i = 0; editor_status[i]; i++) {
+        draw_char(4 + i * EDITOR_CHAR_WIDTH, 12, editor_status[i], 0x00, 0xD0, 0xD0, 1);
     }
 
     int columns = (screen.width - EDITOR_CONTENT_X * 2) / EDITOR_CHAR_WIDTH;
@@ -243,7 +273,8 @@ void editor_draw(void) {
             if (row >= editor_scroll_row && row < editor_scroll_row + visible_rows) {
                 int x = EDITOR_CONTENT_X + column * EDITOR_CHAR_WIDTH;
                 int y = EDITOR_CONTENT_Y + (row - editor_scroll_row) * EDITOR_LINE_HEIGHT;
-                draw_char(x, y, editor_buffer[i], 0xE0, 0xE0, 0xE0, 1);
+                draw_char(x, y, editor_buffer[i], editor_green_text ? 0x00 : 0xE0,
+                          editor_green_text ? 0xFF : 0xE0, editor_green_text ? 0x70 : 0xE0, 1);
             }
             column++;
             if (column >= columns) {
@@ -256,7 +287,69 @@ void editor_draw(void) {
     screen_swap();
 }
 
+int editor_save_document(void) {
+    for (int i = 0; i < EDITOR_SAVE_BYTES; i++) editor_save_image[i] = 0;
+    editor_save_image[0] = 'M';
+    editor_save_image[1] = 'O';
+    editor_save_image[2] = 'G';
+    editor_save_image[3] = '1';
+    editor_save_image[4] = editor_length & 0xFF;
+    editor_save_image[5] = (editor_length >> 8) & 0xFF;
+    for (int i = 0; i < editor_length; i++) {
+        editor_save_image[EDITOR_SAVE_HEADER + i] = editor_buffer[i];
+    }
+
+    for (int sector = 0; sector < EDITOR_SAVE_SECTORS; sector++) {
+        if (!ata_write_sector(EDITOR_SAVE_LBA + sector,
+                              &editor_save_image[sector * 512])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int editor_load_document(void) {
+    for (int sector = 0; sector < EDITOR_SAVE_SECTORS; sector++) {
+        if (!ata_read_sector(EDITOR_SAVE_LBA + sector,
+                             &editor_save_image[sector * 512])) {
+            return -1;
+        }
+    }
+
+    if (editor_save_image[0] != 'M' || editor_save_image[1] != 'O' ||
+        editor_save_image[2] != 'G' || editor_save_image[3] != '1') {
+        return 0;
+    }
+
+    int length = editor_save_image[4] | (editor_save_image[5] << 8);
+    if (length >= EDITOR_CAPACITY || EDITOR_SAVE_HEADER + length > EDITOR_SAVE_BYTES) {
+        return -1;
+    }
+
+    for (int i = 0; i < length; i++) {
+        editor_buffer[i] = editor_save_image[EDITOR_SAVE_HEADER + i];
+    }
+    editor_length = length;
+    editor_cursor = length;
+    editor_buffer[editor_length] = '\0';
+    editor_scroll_row = 0;
+    return 1;
+}
+
 void editor_handle_key(char c) {
+    if (c == 19) {
+        editor_set_status(editor_save_document() ? "Saved to virtual hard disk" : "Save failed: disk unavailable");
+        editor_draw();
+        return;
+    }
+    if (c == 15) {
+        int result = editor_load_document();
+        editor_set_status(result > 0 ? "Loaded saved document" :
+                          result == 0 ? "No saved document found" : "Load failed: disk unavailable");
+        editor_draw();
+        return;
+    }
+
     int columns = (screen.width - EDITOR_CONTENT_X * 2) / EDITOR_CHAR_WIDTH;
     int cursor_row, cursor_column;
     editor_position_to_visual(editor_cursor, columns, &cursor_row, &cursor_column);
@@ -294,6 +387,9 @@ void run_text_editor(void) {
     editor_cursor = 0;
     editor_scroll_row = 0;
     editor_buffer[0] = '\0';
+    int result = editor_load_document();
+    editor_set_status(result > 0 ? "Loaded saved document" :
+                      result == 0 ? "New document; Ctrl+S to save" : "Disk unavailable; document is temporary");
     editor_draw();
 }
 
@@ -354,12 +450,16 @@ void draw_status_bar_thin(void) {
     clock_buf[p++] = ':';
     clock_buf[p++] = '0' + (now.minutes / 10);
     clock_buf[p++] = '0' + (now.minutes % 10);
-    clock_buf[p++] = ':';
-    clock_buf[p++] = '0' + (now.seconds / 10);
-    clock_buf[p++] = '0' + (now.seconds % 10);
+    if (clock_show_seconds) {
+        clock_buf[p++] = ':';
+        clock_buf[p++] = '0' + (now.seconds / 10);
+        clock_buf[p++] = '0' + (now.seconds % 10);
+    }
     clock_buf[p] = '\0';
 
-    int rx = screen.width - (8 * 9) - 2;
+    int clock_length = 0;
+    while (clock_buf[clock_length]) clock_length++;
+    int rx = screen.width - (clock_length * 9) - 2;
     for (int i = 0; clock_buf[i]; i++) {
         draw_char(rx, 1, clock_buf[i], 0x00, 0xFF, 0xFF, 1);
         rx += 9;
@@ -578,6 +678,11 @@ void desktop_handle_key(char c) {
 }
 
 void desktop_update(void) {
+    if (boot_jingle_pending) {
+        boot_jingle_pending = 0;
+        play_boot_jingle();
+    }
+
     if (app_running && current_app_key_handler == snake_key_handler) {
         snake_update();
     } else if (!app_running && timer_get_ticks() - desktop_last_draw_tick >= 100) {

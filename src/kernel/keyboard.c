@@ -83,22 +83,6 @@ int shift_pressed = 0;
 
 
 
-void spawn_terminal(void) {
-    // TODO: implement once window system exists
-}
-
-void close_active_window(void) {
-    // TODO: implement once window system exists
-}
-
-void toggle_maximize(void) {
-    // TODO: implement once window system exists
-}
-
-void kill_active_task(void) {
-    // TODO: implement once window system exists
-}
-
 // keyboard.c
 void outw(unsigned short port, unsigned short val) {
     __asm__ volatile ("outw %0, %1" : : "a"(val), "Nd"(port));
@@ -154,6 +138,14 @@ void keyboard_handler_c(void) {
 
     if (ctrl_pressed && code == 0x23) {
         go_home();
+        return;
+    }
+    if (ctrl_pressed && code == 0x1F) {
+        desktop_handle_key(19);
+        return;
+    }
+    if (ctrl_pressed && code == 0x18) {
+        desktop_handle_key(15);
         return;
     }
 

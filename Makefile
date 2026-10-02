@@ -10,7 +10,8 @@ BUILD_DIR=build
 
 all: floppy_image $(BUILD_DIR)/hdd.img tools_fat
 
-$(BUILD_DIR)/hdd.img: always
+
+$(BUILD_DIR)/hdd.img: | always
 	dd if=/dev/zero of=$(BUILD_DIR)/hdd.img bs=1M count=16
 
 
@@ -107,4 +108,5 @@ always:
 # Clean
 #
 clean:
-	rm -rf $(BUILD_DIR)/*
+	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.bin $(BUILD_DIR)/main_floppy.img
+	rm -rf $(BUILD_DIR)/tools

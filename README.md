@@ -75,3 +75,7 @@ make
 ---
 
 **Tested on:** Ubuntu (WSL2), NASM, `i686-elf-gcc` 13.2.0, QEMU (`qemu-system-i386`)
+
+## Saving editor documents
+
+The text editor supports one saved document on the QEMU hard-disk image. Press **Ctrl+S** to save and **Ctrl+O** to load; the last saved document is loaded when the editor opens. The image is `build/hdd.img`, which is preserved by `make` and `make clean`. Back it up before deleting it; this early storage format is a single MogOS save slot, not a general-purpose filesystem.
