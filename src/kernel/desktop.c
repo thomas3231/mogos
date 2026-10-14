@@ -151,8 +151,9 @@ struct menu_item menu_items[] = {
     { "Text Editor" },
     { "About" },
     { "Settings" },
+    { "Exit" },
 };
-int menu_item_count = 4;
+int menu_item_count = 5;
 int menu_selected = 0;
 int menu_scroll_offset = 0;
 #define MENU_VISIBLE_ROWS 8
@@ -209,20 +210,31 @@ void editor_position_to_visual(int position, int columns, int* row, int* column)
 }
 
 int editor_vertical_target(int target_row, int target_column, int columns) {
+    if (columns < 1) return editor_cursor;
+
     int best_position = editor_cursor;
     int best_distance = columns + 1;
     int found = 0;
+    int row = 0;
+    int column = 0;
 
     for (int position = 0; position <= editor_length; position++) {
-        int row, column;
-        editor_position_to_visual(position, columns, &row, &column);
-        if (row != target_row) continue;
+        if (row == target_row) {
+            int distance = column > target_column ? column - target_column : target_column - column;
+            if (!found || distance < best_distance) {
+                best_position = position;
+                best_distance = distance;
+                found = 1;
+            }
+        }
 
-        int distance = column > target_column ? column - target_column : target_column - column;
-        if (!found || distance < best_distance) {
-            best_position = position;
-            best_distance = distance;
-            found = 1;
+        if (position == editor_length) break;
+        if (editor_buffer[position] == '\n') {
+            row++;
+            column = 0;
+        } else if (++column >= columns) {
+            row++;
+            column = 0;
         }
     }
 
@@ -338,14 +350,16 @@ int editor_load_document(void) {
 
 void editor_handle_key(char c) {
     if (c == 19) {
-        editor_set_status(editor_save_document() ? "Saved to virtual hard disk" : "Save failed: disk unavailable");
+        editor_set_status(editor_save_document() ? "Saved to attached ATA disk" :
+                          "Save failed: attach writable ATA disk; ISO is read-only");
         editor_draw();
         return;
     }
     if (c == 15) {
         int result = editor_load_document();
         editor_set_status(result > 0 ? "Loaded saved document" :
-                          result == 0 ? "No saved document found" : "Load failed: disk unavailable");
+                          result == 0 ? "No saved document found" :
+                          "Load failed: check writable ATA disk");
         editor_draw();
         return;
     }
@@ -389,7 +403,8 @@ void run_text_editor(void) {
     editor_buffer[0] = '\0';
     int result = editor_load_document();
     editor_set_status(result > 0 ? "Loaded saved document" :
-                      result == 0 ? "New document; Ctrl+S to save" : "Disk unavailable; document is temporary");
+                      result == 0 ? "New document; Ctrl+S to save" :
+                      "No ATA disk; ISO is read-only, document is temporary");
     editor_draw();
 }
 
@@ -441,19 +456,27 @@ void draw_status_bar_thin(void) {
     }
 
     struct rtc_time now;
-    rtc_read(&now);
+    int rtc_valid = rtc_read(&now);
 
     char clock_buf[10];
     p = 0;
-    clock_buf[p++] = '0' + (now.hours / 10);
-    clock_buf[p++] = '0' + (now.hours % 10);
-    clock_buf[p++] = ':';
-    clock_buf[p++] = '0' + (now.minutes / 10);
-    clock_buf[p++] = '0' + (now.minutes % 10);
+    if (rtc_valid) {
+        clock_buf[p++] = '0' + (now.hours / 10);
+        clock_buf[p++] = '0' + (now.hours % 10);
+        clock_buf[p++] = ':';
+        clock_buf[p++] = '0' + (now.minutes / 10);
+        clock_buf[p++] = '0' + (now.minutes % 10);
+    } else {
+        clock_buf[p++] = '-';
+        clock_buf[p++] = '-';
+        clock_buf[p++] = ':';
+        clock_buf[p++] = '-';
+        clock_buf[p++] = '-';
+    }
     if (clock_show_seconds) {
         clock_buf[p++] = ':';
-        clock_buf[p++] = '0' + (now.seconds / 10);
-        clock_buf[p++] = '0' + (now.seconds % 10);
+        clock_buf[p++] = rtc_valid ? '0' + (now.seconds / 10) : '-';
+        clock_buf[p++] = rtc_valid ? '0' + (now.seconds % 10) : '-';
     }
     clock_buf[p] = '\0';
 
@@ -510,8 +533,11 @@ void draw_terminal(void) {
     }
 
     draw_char(tx, ty, '>', 0x00, 0xFF, 0x00, 1);
+    int visible_chars = (screen.width - tx - 4) / 9 - 1;
+    if (visible_chars < 0) visible_chars = 0;
+    int first_visible = terminal_pos > visible_chars ? terminal_pos - visible_chars : 0;
     int cx = tx + 9;
-    for (int i = 0; terminal_buffer[i]; i++) {
+    for (int i = first_visible; i < terminal_pos; i++) {
         draw_char(cx, ty, terminal_buffer[i], 0xFF, 0xFF, 0xFF, 1);
         cx += 9;
     }
@@ -653,6 +679,8 @@ void desktop_handle_key(char c) {
                 run_about();
             } else if (str_equals(menu_items[menu_selected].label, "Settings")) {
                 run_settings();
+            } else if (str_equals(menu_items[menu_selected].label, "Exit")) {
+                shutdown_system();
             }
         }
     } else {

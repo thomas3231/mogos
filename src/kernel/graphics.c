@@ -275,17 +275,27 @@ void draw_status_text(void) {
 
     // --- clock, top-right ---
     struct rtc_time now;
-    rtc_read(&now);
+    int rtc_valid = rtc_read(&now);
 
     pos = 0;
-    clock_buffer[pos++] = '0' + (now.hours / 10);
-    clock_buffer[pos++] = '0' + (now.hours % 10);
-    clock_buffer[pos++] = ':';
-    clock_buffer[pos++] = '0' + (now.minutes / 10);
-    clock_buffer[pos++] = '0' + (now.minutes % 10);
-    clock_buffer[pos++] = ':';
-    clock_buffer[pos++] = '0' + (now.seconds / 10);
-    clock_buffer[pos++] = '0' + (now.seconds % 10);
+    if (rtc_valid) {
+        clock_buffer[pos++] = '0' + (now.hours / 10);
+        clock_buffer[pos++] = '0' + (now.hours % 10);
+        clock_buffer[pos++] = ':';
+        clock_buffer[pos++] = '0' + (now.minutes / 10);
+        clock_buffer[pos++] = ':';
+        clock_buffer[pos++] = '0' + (now.seconds / 10);
+        clock_buffer[pos++] = '0' + (now.seconds % 10);
+    } else {
+        clock_buffer[pos++] = '-';
+        clock_buffer[pos++] = '-';
+        clock_buffer[pos++] = ':';
+        clock_buffer[pos++] = '-';
+        clock_buffer[pos++] = '-';
+        clock_buffer[pos++] = ':';
+        clock_buffer[pos++] = '-';
+        clock_buffer[pos++] = '-';
+    }
     clock_buffer[pos] = '\0';
 
     // right-align: screen width minus (8 chars * ~9px per char) minus a small margin

@@ -75,11 +75,20 @@ char scancode_to_ascii[128] = {
     '*', 0,' '
 };
 
+static const char shifted_scancode_to_ascii[128] = {
+    [2] = '!', [3] = '@', [4] = '#', [5] = '$', [6] = '%',
+    [7] = '^', [8] = '&', [9] = '*', [10] = '(', [11] = ')',
+    [12] = '_', [13] = '+', [26] = '{', [27] = '}',
+    [39] = ':', [40] = '"', [41] = '~', [43] = '|',
+    [51] = '<', [52] = '>', [53] = '?'
+};
 
-
-int ctrl_pressed = 0;
-int alt_pressed = 0;
-int shift_pressed = 0;
+static int ctrl_pressed = 0;
+static int alt_pressed = 0;
+static int left_shift_pressed = 0;
+static int right_shift_pressed = 0;
+static int caps_lock_enabled = 0;
+static int caps_lock_pressed = 0;
 
 
 
@@ -99,6 +108,19 @@ unsigned short inw(unsigned short port) {
 
 int extended_scancode = 0;
 
+static char translate_scancode(unsigned char code) {
+    char c = scancode_to_ascii[code];
+    int shift_pressed = left_shift_pressed || right_shift_pressed;
+
+    if (c >= 'a' && c <= 'z') {
+        if (shift_pressed != caps_lock_enabled) c -= 'a' - 'A';
+    } else if (shift_pressed && shifted_scancode_to_ascii[code]) {
+        c = shifted_scancode_to_ascii[code];
+    }
+
+    return c;
+}
+
 
 int in_splash = 1;   // starts true, set false once splash_run() returns
 
@@ -115,7 +137,18 @@ void keyboard_handler_c(void) {
 
     if (code == 0x1D) { ctrl_pressed = !is_release; extended_scancode = 0; return; }
     if (code == 0x38) { alt_pressed = !is_release; extended_scancode = 0; return; }
-    if (code == 0x2A || code == 0x36) { shift_pressed = !is_release; extended_scancode = 0; return; }
+    if (code == 0x2A) { left_shift_pressed = !is_release; extended_scancode = 0; return; }
+    if (code == 0x36) { right_shift_pressed = !is_release; extended_scancode = 0; return; }
+    if (code == 0x3A) {
+        if (is_release) {
+            caps_lock_pressed = 0;
+        } else if (!caps_lock_pressed) {
+            caps_lock_enabled = !caps_lock_enabled;
+            caps_lock_pressed = 1;
+        }
+        extended_scancode = 0;
+        return;
+    }
 
     if (is_release) { extended_scancode = 0; return; }
 
@@ -149,7 +182,7 @@ void keyboard_handler_c(void) {
         return;
     }
 
-    char c = scancode_to_ascii[scancode];
+    char c = translate_scancode(code);
     if (c) {
         desktop_handle_key(c);
     }

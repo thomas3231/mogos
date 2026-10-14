@@ -10,6 +10,6 @@ struct rtc_time {
     unsigned char year;   // last two digits only, e.g. 26 for 2026
 };
 
-void rtc_read(struct rtc_time* out);
+int rtc_read(struct rtc_time* out);
 
 #endif

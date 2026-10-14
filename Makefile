@@ -5,8 +5,9 @@ LD=i686-elf-ld
 SRC_DIR=src
 TOOLS_DIR=tools
 BUILD_DIR=build
+XORRISO=xorriso
 
-.PHONY: all floppy_image kernel bootloader clean always tools_fat
+.PHONY: all floppy_image iso run_iso kernel bootloader clean always tools_fat test
 
 all: floppy_image $(BUILD_DIR)/hdd.img tools_fat
 
@@ -25,6 +26,24 @@ $(BUILD_DIR)/main_floppy.img: bootloader kernel
 	mkfs.fat -F 12 -n "NBOS" $(BUILD_DIR)/main_floppy.img
 	dd if=$(BUILD_DIR)/bootloader.bin of=$(BUILD_DIR)/main_floppy.img conv=notrunc
 	mcopy -i $(BUILD_DIR)/main_floppy.img $(BUILD_DIR)/kernel.bin "::kernel.bin"
+
+#
+# Legacy-BIOS El Torito ISO (floppy emulation)
+#
+iso: $(BUILD_DIR)/mogos.iso
+
+$(BUILD_DIR)/mogos.iso: $(BUILD_DIR)/main_floppy.img
+	command -v $(XORRISO) >/dev/null || { echo "Missing $(XORRISO). Install it with: sudo apt install xorriso"; exit 1; }
+	mkdir -p $(BUILD_DIR)/iso/boot
+	cp $(BUILD_DIR)/main_floppy.img $(BUILD_DIR)/iso/boot/mogos-floppy.img
+	$(XORRISO) -as mkisofs -R -J -V MOGOS \
+		-b boot/mogos-floppy.img -c boot/boot.cat \
+		-o $@ $(BUILD_DIR)/iso
+
+run_iso: iso $(BUILD_DIR)/hdd.img
+	qemu-system-i386 -cdrom $(BUILD_DIR)/mogos.iso -boot d \
+		-drive file=$(BUILD_DIR)/hdd.img,format=raw,if=ide,index=0,media=disk \
+		-audiodev pa,id=snd0 -machine pcspk-audiodev=snd0
 
 #
 # Bootloader
@@ -98,6 +117,13 @@ $(BUILD_DIR)/tools/fat: always $(TOOLS_DIR)/fat/fat.c
 	mkdir -p $(BUILD_DIR)/tools
 	gcc -std=gnu17 -g -o $(BUILD_DIR)/tools/fat $(TOOLS_DIR)/fat/fat.c
 
+test: $(BUILD_DIR)/tools/stability-test
+	$(BUILD_DIR)/tools/stability-test
+
+$(BUILD_DIR)/tools/stability-test: tests/stability_test.c $(SRC_DIR)/kernel/rtc.c $(SRC_DIR)/kernel/timer.c $(SRC_DIR)/kernel/snake.c
+	mkdir -p $(BUILD_DIR)/tools
+	gcc -std=gnu17 -Wall -Wextra -Wno-pointer-to-int-cast -I$(SRC_DIR)/kernel -o $@ $^
+
 #
 # Always
 #
@@ -108,5 +134,6 @@ always:
 # Clean
 #
 clean:
-	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.bin $(BUILD_DIR)/main_floppy.img
+	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.bin $(BUILD_DIR)/main_floppy.img $(BUILD_DIR)/mogos.iso
+	rm -rf $(BUILD_DIR)/iso
 	rm -rf $(BUILD_DIR)/tools

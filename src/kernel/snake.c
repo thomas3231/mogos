@@ -107,15 +107,28 @@ void snake_key_handler(char c) {
         snake_draw();
         return;
     }
-    if ((c == 1 || c == 'w' || c == 'W') && snake_direction_y != 1) {
-        snake_next_direction_x = 0; snake_next_direction_y = -1;
-    } else if ((c == 2 || c == 's' || c == 'S') && snake_direction_y != -1) {
-        snake_next_direction_x = 0; snake_next_direction_y = 1;
-    } else if ((c == 3 || c == 'a' || c == 'A') && snake_direction_x != 1) {
-        snake_next_direction_x = -1; snake_next_direction_y = 0;
-    } else if ((c == 4 || c == 'd' || c == 'D') && snake_direction_x != -1) {
-        snake_next_direction_x = 1; snake_next_direction_y = 0;
+
+    int requested_x = snake_next_direction_x;
+    int requested_y = snake_next_direction_y;
+    if (c == 1 || c == 'w' || c == 'W') {
+        requested_x = 0; requested_y = -1;
+    } else if (c == 2 || c == 's' || c == 'S') {
+        requested_x = 0; requested_y = 1;
+    } else if (c == 3 || c == 'a' || c == 'A') {
+        requested_x = -1; requested_y = 0;
+    } else if (c == 4 || c == 'd' || c == 'D') {
+        requested_x = 1; requested_y = 0;
+    } else {
+        return;
     }
+
+    if ((requested_x == -snake_direction_x && requested_y == -snake_direction_y) ||
+        (requested_x == -snake_next_direction_x && requested_y == -snake_next_direction_y)) {
+        return;
+    }
+
+    snake_next_direction_x = requested_x;
+    snake_next_direction_y = requested_y;
 }
 
 void snake_update(void) {

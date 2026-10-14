@@ -9,13 +9,11 @@ volatile unsigned int idle_ticks = 0;
 volatile unsigned int busy_ticks = 0;
 volatile unsigned int cpu_usage_percent = 0;
 volatile unsigned int idle_state = 0;
+static unsigned int ticks_in_sample = 0;
 
 void timer_handler_c(void) {
     tick_count++;
-
-    if (tick_count % 100 == 0) {
-        uptime_seconds++;
-    }
+    ticks_in_sample++;
 
     if (idle_state) {
         idle_ticks++;
@@ -23,12 +21,14 @@ void timer_handler_c(void) {
         busy_ticks++;
     }
 
-    if (tick_count % 100 == 0) {
+    if (ticks_in_sample == 100) {
+        uptime_seconds++;
         if (idle_ticks + busy_ticks != 0) {
             cpu_usage_percent = (busy_ticks * 100) / (idle_ticks + busy_ticks);
         }
         idle_ticks = 0;
         busy_ticks = 0;
+        ticks_in_sample = 0;
     }
 }
 
@@ -59,8 +59,8 @@ void timer_set_idle_state(unsigned int is_idle) {
 }
 
 void timer_wait(unsigned int ticks) {
-    unsigned int target = tick_count + ticks;
-    while (tick_count < target) {
+    unsigned int start = tick_count;
+    while ((unsigned int)(tick_count - start) < ticks) {
         __asm__ volatile ("hlt");
     }
 }
