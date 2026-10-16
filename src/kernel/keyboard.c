@@ -169,6 +169,15 @@ void keyboard_handler_c(void) {
         return;
     }
 
+    if (code == 0x3C) {
+        desktop_handle_key(19);
+        return;
+    }
+    if (code == 0x3D) {
+        desktop_handle_key(15);
+        return;
+    }
+
     if (ctrl_pressed && code == 0x23) {
         go_home();
         return;

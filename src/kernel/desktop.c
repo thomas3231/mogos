@@ -245,7 +245,7 @@ void editor_draw(void) {
     fill_screen(0x10, 0x10, 0x10);
     draw_rect(0, 0, screen.width, STATUS_BAR_HEIGHT, 0x00, 0x00, 0x00);
 
-    char* heading = "EDITOR  Ctrl+S:save Ctrl+O:load Enter:new line arrows:move Ctrl+H:exit";
+    char* heading = "EDITOR  Ctrl+S/F2:save Ctrl+O/F3:load Enter:new line arrows:move Ctrl+H:exit";
     for (int i = 0; heading[i]; i++) {
         draw_char(4 + i * EDITOR_CHAR_WIDTH, 1, heading[i], 0xFF, 0xFF, 0xFF, 1);
     }
@@ -315,6 +315,18 @@ int editor_save_document(void) {
         if (!ata_write_sector(EDITOR_SAVE_LBA + sector,
                               &editor_save_image[sector * 512])) {
             return 0;
+        }
+    }
+
+    for (int sector = 0; sector < EDITOR_SAVE_SECTORS; sector++) {
+        unsigned char verify[512];
+        if (!ata_read_sector(EDITOR_SAVE_LBA + sector, verify)) {
+            return 0;
+        }
+        for (int i = 0; i < 512; i++) {
+            if (verify[i] != editor_save_image[sector * 512 + i]) {
+                return 0;
+            }
         }
     }
     return 1;

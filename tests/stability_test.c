@@ -6,12 +6,17 @@
 #include "rtc.h"
 #include "timer.h"
 #include "snake.h"
+#include "ata.h"
 
 struct screen_info screen;
 
 static unsigned char cmos[128];
 static unsigned char cmos_register;
 static int cmos_update_stuck;
+static int ata_selected;
+static unsigned char ata_status;
+static unsigned int ata_data_words;
+static unsigned int ata_write_words;
 
 extern volatile unsigned int tick_count;
 extern volatile unsigned int uptime_seconds;
@@ -27,21 +32,37 @@ extern int snake_next_direction_y;
 
 void outb(unsigned short port, unsigned char value) {
     if (port == 0x70) cmos_register = value & 0x7F;
+    if (port == 0x1F6) {
+        ata_selected = 1;
+        ata_status = 0x50;
+        ata_data_words = 0;
+    }
+    if (port == 0x1F7 && ata_selected) {
+        ata_data_words = 0;
+        ata_status = value == 0x20 || value == 0x30 ? 0x58 : 0x50;
+    }
 }
 
 unsigned char inb(unsigned short port) {
+    if (port == 0x1F7 || port == 0x3F6) return ata_status;
     if (port != 0x71) return 0;
     if (cmos_register == 0x0A && cmos_update_stuck) return 0x80;
     return cmos[cmos_register];
 }
 
 void outw(unsigned short port, unsigned short value) {
-    (void)port;
     (void)value;
+    if (port == 0x1F0 && ata_status == 0x58) {
+        ata_write_words++;
+        if (++ata_data_words == 256) ata_status = 0x50;
+    }
 }
 
 unsigned short inw(unsigned short port) {
-    (void)port;
+    if (port == 0x1F0 && ata_status == 0x58) {
+        if (++ata_data_words == 256) ata_status = 0x50;
+        return 0;
+    }
     return 0;
 }
 
@@ -152,10 +173,23 @@ static void test_snake_queued_turns(void) {
     assert(snake_next_direction_x == 1 && snake_next_direction_y == 0);
 }
 
+static void test_ata_selects_device_before_polling(void) {
+    unsigned char sector[512] = {0};
+    ata_selected = 0;
+    ata_status = 0;
+    ata_data_words = 0;
+    ata_write_words = 0;
+
+    assert(ata_write_sector(1, sector));
+    assert(ata_selected);
+    assert(ata_write_words == 256);
+}
+
 int main(void) {
     test_rtc_formats_and_failure();
     test_timer_counters();
     test_snake_queued_turns();
+    test_ata_selects_device_before_polling();
     puts("MogOS stability tests passed");
     return 0;
 }

@@ -52,7 +52,7 @@ static int ata_wait_complete(void) {
 }
 
 static int ata_select_lba(unsigned int lba) {
-    if (lba >= ATA_LBA_LIMIT || !ata_wait_ready()) return 0;
+    if (lba >= ATA_LBA_LIMIT) return 0;
 
     outb(ATA_DRIVE_HEAD, 0xE0 | ((lba >> 24) & 0x0F));
     for (int i = 0; i < 4; i++) inb(ATA_ALT_STATUS);

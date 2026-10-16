@@ -120,7 +120,7 @@ $(BUILD_DIR)/tools/fat: always $(TOOLS_DIR)/fat/fat.c
 test: $(BUILD_DIR)/tools/stability-test
 	$(BUILD_DIR)/tools/stability-test
 
-$(BUILD_DIR)/tools/stability-test: tests/stability_test.c $(SRC_DIR)/kernel/rtc.c $(SRC_DIR)/kernel/timer.c $(SRC_DIR)/kernel/snake.c
+$(BUILD_DIR)/tools/stability-test: tests/stability_test.c $(SRC_DIR)/kernel/rtc.c $(SRC_DIR)/kernel/timer.c $(SRC_DIR)/kernel/snake.c $(SRC_DIR)/kernel/ata.c
 	mkdir -p $(BUILD_DIR)/tools
 	gcc -std=gnu17 -Wall -Wextra -Wno-pointer-to-int-cast -I$(SRC_DIR)/kernel -o $@ $^
 

@@ -111,7 +111,7 @@ tested separately.
 
 ## Saving editor documents
 
-The text editor supports one saved document on the QEMU hard-disk image. Press **Ctrl+S** to save and **Ctrl+O** to load; the last saved document is loaded when the editor opens. The image is `build/hdd.img`, which is preserved by `make` and `make clean`. Back it up before deleting it; this early storage format is a single MogOS save slot, not a general-purpose filesystem.
+The text editor supports one saved document on the attached writable ATA disk. Press **Ctrl+S** or **F2** to save and **Ctrl+O** or **F3** to load; the last saved document is loaded when the editor opens. In QEMU, `make run_iso` attaches `build/hdd.img`, which is preserved by `make` and `make clean`. The ISO itself is read-only and cannot store edits. Back up the disk image before deleting it; this early storage format is a single MogOS save slot, not a general-purpose filesystem.
 
 ## Keyboard controls
 
