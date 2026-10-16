@@ -29,7 +29,7 @@ void run_snake(void) {
 }
 
 void about_handle_key(char c) {
-    // Ctrl+H (global) is the only way out, nothing to do here
+    (void)c;
 }
 
 void run_about(void) {
@@ -39,30 +39,28 @@ void run_about(void) {
     fill_screen(0x00, 0x00, 0x00);
 
     char* lines[] = {
-        "MOGOS - THE LEGEND",
+        "MOGOS - THE LEGEND RETURNS",
         "",
-        "In the year of our LORD,",
-        "Thomas Gazan was born into",
-        "a world of dial-up modems",
-        "and unpatched buffer overflows.",
+        "In the beginning, there was BIOS.",
+        "Then came MogOS. The fans got louder.",
         "",
-        "He toiled for weeks in the",
-        "trenches of WSL, wrestling",
-        "GDTs and stack offsets by",
-        "candlelight, alone, save for",
-        "the sacred glow of QEMU.",
+        "It stared into the void of Ring 0",
+        "and the void forgot to set a stack.",
         "",
-        "Bootloaders crashed. IDTs",
-        "misfired. Still he pressed on.",
+        "The keyboard spoke. The timer ticked.",
+        "Snake ate. The pixels obeyed.",
         "",
-        "Every line of this OS was",
-        "forged by his own two hands,",
-        "no shortcuts, no help, just",
-        "raw willpower and NASM.",
+        "Then the editor asked to save.",
+        "\"Where?\" asked the read-only ISO.",
+        "A writable disk joined the party.",
+        "Five sectors later: history.",
         "",
-        "This is MogOS.",
-        "Ctrl+H to return to safety.",
-        "This was AI generated btw",
+        "No filesystem. No mouse. No network.",
+        "Just one document and unreasonable",
+        "confidence in a 32-bit kernel.",
+        "",
+        "Ctrl+H: return to the desktop.",
+        "Please clap; the IRQs are listening.",
     };
     int line_count = sizeof(lines) / sizeof(lines[0]);
 
@@ -120,7 +118,7 @@ void run_settings(void) {
     }
     y += 12;
 
-    char* toggle_b_label = "[B] Play boot jingle once";
+    char* toggle_b_label = "[B] Play jingle now";
     x = 4;
     for (int i = 0; toggle_b_label[i]; i++) {
         draw_char(x, y, toggle_b_label[i], 0xFF, 0xFF, 0xFF, 1);
@@ -140,6 +138,13 @@ void run_settings(void) {
     x = 4;
     for (int i = 0; hint[i]; i++) {
         draw_char(x, y, hint[i], 0x88, 0x88, 0x88, 1);
+        x += 9;
+    }
+    y += 12;
+    char* session_hint = "Settings reset when MogOS restarts.";
+    x = 4;
+    for (int i = 0; session_hint[i]; i++) {
+        draw_char(x, y, session_hint[i], 0x88, 0x88, 0x88, 1);
         x += 9;
     }
 
@@ -347,7 +352,7 @@ int editor_load_document(void) {
 
     int length = editor_save_image[4] | (editor_save_image[5] << 8);
     if (length >= EDITOR_CAPACITY || EDITOR_SAVE_HEADER + length > EDITOR_SAVE_BYTES) {
-        return -1;
+        return -2;
     }
 
     for (int i = 0; i < length; i++) {
@@ -363,7 +368,7 @@ int editor_load_document(void) {
 void editor_handle_key(char c) {
     if (c == 19) {
         editor_set_status(editor_save_document() ? "Saved to attached ATA disk" :
-                          "Save failed: attach writable ATA disk; ISO is read-only");
+                          "Save failed: disk missing or I/O error");
         editor_draw();
         return;
     }
@@ -371,7 +376,8 @@ void editor_handle_key(char c) {
         int result = editor_load_document();
         editor_set_status(result > 0 ? "Loaded saved document" :
                           result == 0 ? "No saved document found" :
-                          "Load failed: check writable ATA disk");
+                          result == -2 ? "Saved document is corrupt; editor unchanged" :
+                          "Disk read failed; editor unchanged");
         editor_draw();
         return;
     }
@@ -379,6 +385,7 @@ void editor_handle_key(char c) {
     int columns = (screen.width - EDITOR_CONTENT_X * 2) / EDITOR_CHAR_WIDTH;
     int cursor_row, cursor_column;
     editor_position_to_visual(editor_cursor, columns, &cursor_row, &cursor_column);
+    int changed = 0;
 
     if (c == 3 && editor_cursor > 0) {
         editor_cursor--;
@@ -394,15 +401,22 @@ void editor_handle_key(char c) {
         }
         editor_cursor--;
         editor_length--;
-    } else if ((c == '\n' || (c >= 32 && c < 127)) && editor_length < EDITOR_CAPACITY - 1) {
-        for (int i = editor_length; i > editor_cursor; i--) {
-            editor_buffer[i] = editor_buffer[i - 1];
+        changed = 1;
+    } else if (c == '\n' || (c >= 32 && c < 127)) {
+        if (editor_length < EDITOR_CAPACITY - 1) {
+            for (int i = editor_length; i > editor_cursor; i--) {
+                editor_buffer[i] = editor_buffer[i - 1];
+            }
+            editor_buffer[editor_cursor++] = c;
+            editor_length++;
+            editor_buffer[editor_length] = '\0';
+            changed = 1;
+        } else {
+            editor_set_status("Document full; delete text to continue");
         }
-        editor_buffer[editor_cursor++] = c;
-        editor_length++;
-        editor_buffer[editor_length] = '\0';
     }
 
+    if (changed) editor_set_status("Unsaved changes");
     editor_draw();
 }
 
@@ -416,7 +430,8 @@ void run_text_editor(void) {
     int result = editor_load_document();
     editor_set_status(result > 0 ? "Loaded saved document" :
                       result == 0 ? "New document; Ctrl+S to save" :
-                      "No ATA disk; ISO is read-only, document is temporary");
+                      result == -2 ? "Saved document is corrupt; starting empty" :
+                      "Cannot read save slot; edits are temporary");
     editor_draw();
 }
 

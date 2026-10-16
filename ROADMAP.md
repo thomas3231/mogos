@@ -1,69 +1,213 @@
-# MogOS Roadmap
+# MogOS: Six-Month Roadmap
 
-A practical plan for the high-school final project, starting in October 2026. Keep the graded project focused on a reliable, understandable demo. Treat USB-disk boot, a general-purpose filesystem, and a graphical file explorer as staged extensions unless the core demo is already stable.
+**Planning window:** 16 October 2026 to 16 April 2027
+**Goal:** Grow MogOS from a stable Ring 0 demo into a small OS with a tested
+filesystem and file explorer, a deliberately bounded multitasking/memory
+experiment, and a real-time 2.5D raycasting demo—without losing the known-good
+bootable build.
 
-## Current implementation and boundaries
+This is an ambitious solo-project plan, not a promise that every stretch goal
+will fit. Preserve a working build at every checkpoint. If a stage slips, cut
+optional features before cutting testing, documentation, or the final packaging
+buffer.
 
-- The BIOS boot sector loads `KERNEL.BIN` from a 1.44 MiB FAT12 floppy image, then the kernel switches into 32-bit protected mode. Kernel code runs in Ring 0; there is not yet a user-mode process model.
-- `make` builds the kernel, `build/main_floppy.img`, and a separate 16 MiB ATA hard-disk image. `run.sh` boots the floppy and attaches that disk.
-- `make iso` now packages the existing floppy boot image as a legacy-BIOS El Torito floppy-emulation ISO. This supports optical-media/QEMU boot; it is not a USB-hybrid ISO.
-- The editor's save slot occupies fixed sectors on the ATA disk. `tools/fat/fat.c` is a host-side FAT12 reader, not a kernel filesystem.
-- There is no kernel filesystem or file explorer yet. Keep the editor's existing save/load behavior working until a replacement has passed storage tests.
+## Current baseline (verified 16 October 2026)
 
-Do not switch this project to GRUB or claim USB boot support just to produce an `.iso`: the current kernel is a flat binary entered by a custom bootloader, not a Multiboot ELF kernel. Keep the floppy boot route reproducible while developing any alternate loader.
+- The custom legacy-BIOS loader boots a FAT12 floppy image and loads a flat
+  kernel binary. The kernel enters 32-bit protected mode and executes in Ring 0.
+- The existing ISO uses El Torito floppy emulation. It boots in QEMU but is
+  read-only and is **not** a USB-hybrid image.
+- The desktop has keyboard input, graphics, RTC/timer status, Settings, Snake,
+  and a text editor.
+- The editor saves one document to a fixed `MOG1` slot on an attached ATA disk.
+  A clean ISO rebuild and reboot with the same disk preserved a saved document.
+- `make test` covers selected RTC, timer, ATA, editor, and Snake regressions.
+- Phase 1 was completed and re-verified in QEMU on 16 October 2026. The manual
+  checklist, no-disk behavior, empty/full editor cases, and rebuild persistence
+  passed; see [PRESENTATION.md](./PRESENTATION.md) and the packaged screenshots.
+- There is no general filesystem, named-file explorer, mouse driver,
+  networking, user-mode process model, or USB-disk boot path.
+- The bootable ISO, separate blank ATA demo disk, checksums, and QA screenshots
+  are in [release/core-demo-2026-10-16/](./release/core-demo-2026-10-16/).
+  The final report and backup recording still need to be prepared.
 
-## October 2026: Stabilize the Core
+## Non-negotiable working rules
 
-- Keep the cross-compiler build reproducible and verify the boot flow in QEMU.
-- Build the legacy-BIOS El Torito ISO with `make iso`, then verify it with QEMU using `-cdrom build/mogos.iso -boot d` and the existing `build/hdd.img`.
-- Keep floppy-image boot (`./run.sh`) as the known-good fallback when validating ISO changes.
-- Test keyboard input (lowercase, Shift/Caps Lock, shifted symbols, both Shift keys, and Caps Lock repeat), timer/CPU display, RTC clock, settings, Snake (including rapid direction changes), and editor save/load.
-- Run `make test` for host-side RTC mode/failure, timer counter/wraparound, and Snake turn-queue regression checks.
-- Fix hangs and crashes before adding major features.
-- Keep the current single-document disk save as a clearly limited prototype.
-- Record missing-disk and read/write failures; do not format or repurpose the save disk without a backup.
+1. Keep a known-good ISO and a separate backup of its writable disk image.
+   Never use a valuable or personal disk image for filesystem experiments.
+2. Keep changes small enough to test. Each stage ends with host tests, a clean
+   cross-build, and a QEMU smoke test before the next stage begins.
+3. Add host-side tests for storage formats and algorithms before wiring them
+   into the desktop UI.
+4. Avoid silently treating failed operations as success. Show useful UI errors
+   and preserve existing data on failed reads or writes.
+5. Keep the existing editor save slot compatible until the filesystem-backed
+   editor has passed round-trip and migration tests.
+6. No broad rewrite during the last two weeks. USB boot is optional and must
+   not displace the core demo or final rehearsal.
 
-**Milestone:** a repeatable build and a demo that boots and can be operated without getting stuck.
+## Completed — Phase 1: Core freeze and polish
+### Completed 16 October 2026
 
-## November 2026: Finish the Demo Experience
+- `make test` passed; `make clean && make all iso` rebuilt the kernel and
+  legacy-BIOS El Torito ISO from scratch.
+- QEMU booted the ISO repeatedly, including the packaged ISO with its blank
+  writable ATA disk. `xorriso` confirmed the BIOS floppy-emulation boot entry.
+- The editor saved a modifier-test document, then loaded it after another clean
+  rebuild using the same disposable disk. Empty-document save/load, the
+  2,042-character limit and recovery, and the explicit missing-disk save error
+  were also checked.
+- QEMU manual checks covered Shift/Caps Lock, Settings toggles and captured
+  jingle output, Snake launch/exit/pause/collision/restart, and the
+  uptime/CPU/RTC status bar.
+- No reproducible core defect was found during this pass. The ATA `MOG1`
+  format remains a fixed save slot, not a filesystem.
+- The standalone package and screenshots are archived in
+  [release/core-demo-2026-10-16/](./release/core-demo-2026-10-16/).
 
-- Polish the editor workflow, settings, and status display.
-- Check edge cases such as empty documents, maximum editor size, missing disk, and failed reads/writes.
-- Remove any remaining nonfunctional UI and document known limitations.
+**Exit gate: passed.** The existing demo is ready to serve as the known-good
+baseline for the next stage. Filesystem, paging, and USB boot were not started.
 
-**Milestone:** a small, coherent set of features that can be explained and demonstrated reliably.
+## Phase 2 — Minimal filesystem and keyboard-first file explorer
+### 17 October–16 December 2026
 
-## December 2026: Test and Prepare the Presentation
+**Goal:** Replace the single-file storage limitation only after a tested storage
+layer exists.
 
-- Re-test from a clean build and confirm saved data survives a normal rebuild.
-- Capture screenshots or a short backup recording of the demo.
-- Write the report around the boot process, interrupts, graphics, input, and storage design.
-- Decide which stretch goals to leave out; avoid starting a broad driver rewrite this late.
+#### Storage design and tests
 
-**Milestone:** a stable candidate build and a complete explanation of how it works.
+- Define a block-device interface over the working ATA sector routines.
+- Reserve an explicit filesystem region that cannot overlap the existing save
+  slot at LBA 1–5. Document the layout and reject undersized disks.
+- Specify a versioned, fixed-size on-disk format: superblock, bounded
+  single-level directory, and a simple allocation bitmap or fixed-block table.
+- Validate every on-disk count, name, length, version, and LBA before use.
+  Reject corrupt or unknown formats rather than guessing or formatting
+  automatically.
+- Implement and host-test format/mount, list, create, read, write, delete,
+  full-volume behavior, corrupt metadata, invalid names, out-of-range requests,
+  and injected I/O failures using an in-memory disk mock.
 
-## January 2027: Final Packaging
+#### UI and editor integration
 
-- Package and test both the floppy image and the legacy-BIOS El Torito ISO in QEMU.
-- Treat USB-disk boot as optional unless it has its own tested hard-disk boot path. The current ISO is not USB-hybrid.
-- Rehearse the presentation and keep a known-good copy of the build and demo recording.
-- Make only small, tested fixes after the feature freeze.
+- Add a keyboard-first file manager: list/select, create, open, delete, and
+  visible error/status messages.
+- Add a desktop entry only after the file-manager API works independently.
+- Connect editor open/save by filename after storage round-trips pass. Keep the
+  old save slot readable or clearly report that migration is not supported;
+  never overwrite it implicitly.
+- Test power-off/reboot persistence in QEMU using disposable disk images.
 
-**Milestone:** final report, reproducible build steps, and a rehearsed demo.
+**Exit gate:** Filesystem host tests pass, QEMU create/write/reboot/read/delete
+works, corrupted media does not hang or destroy unrelated data, and the
+keyboard-only explorer is usable.
 
-## Later Extension: Basic Filesystem
+**Stretch only:** Mouse support. A complete graphical mouse/windowing stack is
+not a prerequisite for a useful file explorer.
 
-Keep this extension on a separate branch or behind a feature gate until the demo milestone is stable.
+## Phase 3 — Memory foundations and a bounded task model
+### 17 December 2026–16 January 2027
 
-1. **Define storage boundaries.** Add a block-device interface above the ATA sector functions. Choose a documented disk region for filesystem metadata/data that cannot overlap the editor's current save sectors. Add explicit capacity, sector-size, and I/O error reporting.
-2. **Specify a tiny on-disk format.** Start with a versioned superblock, bounded root-directory table, and a simple allocation bitmap or fixed-size data blocks. Use fixed-width fields, validate every LBA/count/name/size read from disk, and reject unknown versions rather than guessing.
-3. **Test the storage layer before UI integration.** Add host-side tests with an in-memory block-device mock for format/mount, empty and full volumes, create/list/read/write/delete, multi-sector files, corrupt metadata, out-of-range requests, and failed reads/writes. Do not use the live editor save area in these tests.
-4. **Integrate a text file manager.** Implement keyboard selection, open/read, create/write, and delete with visible error/status messages. Test empty directories, long names, full storage, and failed I/O.
-5. **Add the desktop file explorer.** Add a menu entry and a small graphical directory/list view that uses the same file-manager API; keep rendering and keyboard navigation separate from filesystem code. Initially, support keyboard-only operation because there is no mouse driver.
-6. **Move the editor only after compatibility tests.** Add named-file open/save, verify the existing prototype save is either migrated or clearly retained as a fallback, then test rebuild/reboot persistence.
+**Goal:** Learn and demonstrate scheduling and memory ownership without turning
+the school-project kernel into an unbounded process rewrite.
 
-Do not expand to nested directories, long filenames, caching, or concurrent access until the bounded single-directory implementation is reliable.
+- Audit the current heap: allocation boundaries, alignment, exhaustion
+  behavior, and testability. Add deterministic allocator tests and fail
+  visibly/safely on exhaustion.
+- Define a small task structure and explicit task states, stack ownership, and
+  saved CPU context. Keep the first implementation cooperative.
+- Demonstrate two simple kernel tasks (for example, a clock/status updater and
+  a background counter) while ensuring keyboard input and Snake remain
+  responsive.
+- Only consider timer-driven preemption after context switching, stack
+  boundaries, interrupt return state, and task teardown are independently
+  tested.
+- Treat paging and user-mode isolation as a stretch. If attempted, start with a
+  documented page-table model and fault tests; do not claim process isolation
+  unless user/supervisor permissions and fault handling are demonstrated.
 
-## Later Extension: USB-Disk Boot
+**Exit gate:** The cooperative scheduler has repeatable task-switch tests,
+bounded stacks, no corruption of the existing desktop, and a documented
+recovery/failure policy.
 
-USB boot is separate from optical ISO boot and requires a hard-disk-compatible image. First update the boot path to recognize a partition and use BIOS INT 13h extensions (EDD) for LBA reads; the current loader assumes a floppy layout and CHS addressing from LBA 0. Then build a partitioned USB disk image, test it in QEMU as a hard disk, and only after that document physical-device flashing with explicit device-identification and data-loss warnings. Keep the floppy and optical ISO boot paths as fallbacks.
+**Cut line:** If task switching threatens the stable boot or storage features,
+keep the allocator improvements and postpone scheduling.
+
+## Phase 4 — 2.5D raycasting demo
+### 17 January–1 March 2027
+
+**Goal:** Build a small first-person raycasting demo that runs in MogOS, not a
+general-purpose 3D engine.
+
+1. **Math prototype:** Implement grid-map traversal (DDA) and player movement
+   as host-testable C code. Test axis-aligned rays, corners, map boundaries,
+   and collision before drawing.
+2. **Fixed-point renderer:** Avoid floating-point/libm dependencies. Render a
+   modest number of vertical wall columns and scale them into the framebuffer.
+   Use a small hand-authored map first; use distance shading or simple wall
+   colors rather than textures initially.
+3. **Input and timing:** Add keyboard rotation/movement, wall collision, and
+   frame pacing using existing timer ticks. Keep the UI responsive and provide
+   an obvious exit key.
+4. **Map editor only if time allows:** Start with a static map and a documented
+   map format. A graphical 2D wall editor is optional, not a prerequisite for
+   the raycaster.
+5. **Performance pass:** Measure frame time, reduce ray count or resolution
+   before adding complexity, and avoid blocking disk I/O in the render loop.
+
+**Exit gate:** Host tests cover ray/map edge cases; the engine runs in QEMU with
+movement, collision, and a reliable exit; the original desktop/editor can still
+be reached and tested.
+
+**Stretch only:** Textures, sprites, multiple maps, a graphical map editor, and
+raycaster task isolation.
+
+## Phase 5 — Feature freeze, packaging, and presentation
+### 2–17 March 2027
+
+**Goal:** Deliver one repeatable, explainable build.
+
+- Freeze features. Fix only small, reproducible defects.
+- From a clean build, run `make test`, build the ISO, verify its El Torito boot
+  record, boot in QEMU, and rehearse the complete demo.
+- Re-test filesystem/editor persistence on a disposable disk and confirm the
+  known-good disk backup is readable.
+- Capture clear screenshots and a short backup recording. Keep copies outside
+  `build/`.
+- Finish the report with architecture diagrams or annotated flow sketches for
+  boot, interrupts, graphics/input, storage, scheduler/memory (if implemented),
+  and raycasting.
+- Rehearse a short presentation with an offline QEMU fallback and a saved
+  recording.
+
+**Exit gate:** The clean build and test suite pass, the demo can be operated
+without getting stuck, limitations are stated honestly, and all presentation
+assets exist in at least two safe locations.
+
+**Schedule buffer:** 18 March–16 April 2027 is reserved for school deadlines,
+repeat rehearsals, verified backups, and small fixes. Do not spend it on new
+features unless every exit gate is already satisfied.
+
+## USB-disk boot — optional parallel research, not on the critical path
+
+The current ISO boots as legacy-BIOS optical media through floppy emulation.
+Writing it directly to a USB drive does **not** make the present boot path
+USB-bootable. A real USB-disk path requires a disk-style image/boot sector,
+partition-aware addressing, and BIOS INT 13h extensions (EDD) or another
+explicitly tested loader path.
+
+Do not flash a physical drive until a partitioned image has first booted as a
+hard disk in QEMU and the target device has been positively identified. USB
+boot remains optional; the ISO/QEMU demo is the reliable fallback.
+
+## Daily/weekly execution rhythm
+
+- Work in focused sessions with one concrete outcome; keep a short list of
+  commands/tests and results in the project notes.
+- At the end of each session, leave the tree buildable and record the next
+  smallest task.
+- At least once each week, do a clean build and demonstrate the current
+  milestone from boot to exit.
+- If a feature consumes several sessions without a testable result, reduce its
+  scope or move it to the stretch list rather than destabilizing completed
+  work.

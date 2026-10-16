@@ -7,6 +7,7 @@
 #define SNAKE_MAX_LENGTH 128
 #define SNAKE_START_LENGTH 4
 #define SNAKE_START_TICKS 12
+#define SNAKE_HEADER_HEIGHT 22
 
 struct snake_segment {
     int x;
@@ -23,9 +24,11 @@ int snake_food_x;
 int snake_food_y;
 int snake_board_width;
 int snake_board_height;
+int snake_score;
 unsigned int snake_last_tick;
 unsigned int snake_seed = 0x51A9;
 int snake_game_over;
+int snake_won;
 int snake_paused;
 
 int snake_random(int limit) {
@@ -41,10 +44,30 @@ int snake_hits_body(int x, int y, int count) {
 }
 
 void snake_place_food(void) {
-    do {
-        snake_food_x = snake_random(snake_board_width);
-        snake_food_y = snake_random(snake_board_height);
-    } while (snake_hits_body(snake_food_x, snake_food_y, snake_length));
+    int board_size = snake_board_width * snake_board_height;
+    if (board_size <= 0) {
+        snake_food_x = -1;
+        snake_food_y = -1;
+        snake_game_over = 1;
+        return;
+    }
+
+    int start = snake_random(board_size);
+    for (int offset = 0; offset < board_size; offset++) {
+        int cell = (start + offset) % board_size;
+        int x = cell % snake_board_width;
+        int y = cell / snake_board_width;
+        if (!snake_hits_body(x, y, snake_length)) {
+            snake_food_x = x;
+            snake_food_y = y;
+            return;
+        }
+    }
+
+    snake_food_x = -1;
+    snake_food_y = -1;
+    snake_won = 1;
+    snake_game_over = 1;
 }
 
 void snake_draw_text(int x, int y, char* text, unsigned char r, unsigned char g, unsigned char b) {
@@ -54,11 +77,19 @@ void snake_draw_text(int x, int y, char* text, unsigned char r, unsigned char g,
 }
 
 void snake_draw(void) {
-    int board_top = 12;
+    int board_top = SNAKE_HEADER_HEIGHT;
     fill_screen(0x05, 0x08, 0x05);
-    draw_rect(0, 0, screen.width, 10, 0x00, 0x00, 0x00);
+    draw_rect(0, 0, screen.width, SNAKE_HEADER_HEIGHT, 0x00, 0x00, 0x00);
     snake_draw_text(4, 1, "SNAKE", 0x00, 0xFF, 0x00);
-    snake_draw_text(screen.width - 180, 1, "ARROWS/WASD  CTRL+H EXIT", 0xAA, 0xAA, 0xAA);
+    char score_label[16] = "SCORE: 0000";
+    int score = snake_score;
+    for (int i = 10; i >= 7; i--) {
+        score_label[i] = '0' + score % 10;
+        score /= 10;
+    }
+    snake_draw_text(screen.width / 2 - 45, 1, score_label, 0xFF, 0xFF, 0x00);
+    snake_draw_text(4, 12, "WASD/ARROWS:MOVE  P:PAUSE  CTRL+H:EXIT",
+                    0xAA, 0xAA, 0xAA);
 
     for (int i = 0; i < snake_length; i++) {
         unsigned char r = i == 0 ? 0x80 : 0x20;
@@ -67,27 +98,39 @@ void snake_draw(void) {
                   board_top + snake_body[i].y * SNAKE_CELL,
                   SNAKE_CELL - 1, SNAKE_CELL - 1, r, g, 0x20);
     }
-    draw_rect(snake_food_x * SNAKE_CELL, board_top + snake_food_y * SNAKE_CELL,
-              SNAKE_CELL - 1, SNAKE_CELL - 1, 0xFF, 0x30, 0x30);
+    if (snake_food_x >= 0 && snake_food_y >= 0) {
+        draw_rect(snake_food_x * SNAKE_CELL, board_top + snake_food_y * SNAKE_CELL,
+                  SNAKE_CELL - 1, SNAKE_CELL - 1, 0xFF, 0x30, 0x30);
+    }
 
     if (snake_game_over || snake_paused) {
-        char* message = snake_game_over ? "GAME OVER - ENTER TO RESTART" : "PAUSED - P TO CONTINUE";
-        int message_x = (screen.width - 9 * 26) / 2;
+        char* message = snake_won ? "YOU WIN - ENTER TO RESTART" :
+                        snake_game_over ? "GAME OVER - ENTER TO RESTART" :
+                        "PAUSED - P TO CONTINUE";
+        int message_length = 0;
+        while (message[message_length]) message_length++;
+        int message_x = (screen.width - 9 * message_length) / 2;
         snake_draw_text(message_x, screen.height / 2, message, 0xFF, 0xFF, 0x00);
+        if (snake_game_over) {
+            snake_draw_text((screen.width - 9 * 27) / 2, screen.height / 2 + 12,
+                            "CTRL+H TO RETURN TO DESKTOP", 0xAA, 0xAA, 0xAA);
+        }
     }
     screen_swap();
 }
 
 void snake_start(void) {
     snake_board_width = screen.width / SNAKE_CELL;
-    snake_board_height = (screen.height - 12) / SNAKE_CELL;
+    snake_board_height = (screen.height - SNAKE_HEADER_HEIGHT) / SNAKE_CELL;
     snake_length = SNAKE_START_LENGTH;
     snake_direction_x = 1;
     snake_direction_y = 0;
     snake_next_direction_x = 1;
     snake_next_direction_y = 0;
     snake_game_over = 0;
+    snake_won = 0;
     snake_paused = 0;
+    snake_score = 0;
     snake_last_tick = timer_get_ticks();
     for (int i = 0; i < snake_length; i++) {
         snake_body[i].x = snake_board_width / 2 - i;
@@ -153,6 +196,9 @@ void snake_update(void) {
     for (int i = snake_length - 1; i > 0; i--) snake_body[i] = snake_body[i - 1];
     snake_body[0].x = next_x;
     snake_body[0].y = next_y;
-    if (growing) snake_place_food();
+    if (growing) {
+        snake_score++;
+        snake_place_food();
+    }
     snake_draw();
 }

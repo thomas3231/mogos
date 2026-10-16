@@ -14,6 +14,7 @@ static unsigned char cmos[128];
 static unsigned char cmos_register;
 static int cmos_update_stuck;
 static int ata_selected;
+static int ata_present = 1;
 static unsigned char ata_status;
 static unsigned int ata_data_words;
 static unsigned int ata_write_words;
@@ -29,17 +30,38 @@ extern int snake_direction_x;
 extern int snake_direction_y;
 extern int snake_next_direction_x;
 extern int snake_next_direction_y;
+extern int snake_length;
+extern int snake_board_width;
+extern int snake_board_height;
+extern int snake_game_over;
+extern int snake_won;
+
+struct test_snake_segment {
+    int x;
+    int y;
+};
+
+extern struct test_snake_segment snake_body[128];
+extern void snake_place_food(void);
+
+extern char editor_buffer[2043];
+extern char editor_status[48];
+extern int editor_length;
+extern int editor_cursor;
+extern void editor_handle_key(char key);
+extern int editor_load_document(void);
 
 void outb(unsigned short port, unsigned char value) {
     if (port == 0x70) cmos_register = value & 0x7F;
     if (port == 0x1F6) {
         ata_selected = 1;
-        ata_status = 0x50;
+        ata_status = ata_present ? 0x50 : 0;
         ata_data_words = 0;
     }
     if (port == 0x1F7 && ata_selected) {
         ata_data_words = 0;
-        ata_status = value == 0x20 || value == 0x30 ? 0x58 : 0x50;
+        ata_status = ata_present ?
+                     value == 0x20 || value == 0x30 ? 0x58 : 0x50 : 0;
     }
 }
 
@@ -173,6 +195,95 @@ static void test_snake_queued_turns(void) {
     assert(snake_next_direction_x == 1 && snake_next_direction_y == 0);
 }
 
+static void test_snake_full_board_finishes_without_hanging(void) {
+    snake_board_width = 2;
+    snake_board_height = 2;
+    snake_length = 4;
+    snake_game_over = 0;
+    snake_won = 0;
+    snake_body[0] = (struct test_snake_segment){0, 0};
+    snake_body[1] = (struct test_snake_segment){1, 0};
+    snake_body[2] = (struct test_snake_segment){0, 1};
+    snake_body[3] = (struct test_snake_segment){1, 1};
+
+    snake_place_food();
+    assert(snake_game_over && snake_won);
+}
+
+static void test_editor_size_limit_and_unsaved_status(void) {
+    screen.width = 1024;
+    screen.height = 768;
+    editor_length = 2042;
+    editor_cursor = editor_length;
+    memset(editor_buffer, 'x', editor_length);
+    editor_buffer[editor_length] = '\0';
+
+    editor_handle_key('y');
+    assert(editor_length == 2042 && editor_cursor == 2042);
+    assert(editor_buffer[2041] == 'x' && editor_buffer[2042] == '\0');
+    assert(strcmp(editor_status, "Document full; delete text to continue") == 0);
+
+    editor_handle_key('\b');
+    assert(editor_length == 2041 && editor_cursor == 2041);
+    assert(strcmp(editor_status, "Unsaved changes") == 0);
+}
+
+static void test_editor_vertical_navigation(void) {
+    const char text[] = "one\ntwo\nthree";
+    memcpy(editor_buffer, text, sizeof(text));
+    editor_length = (int)sizeof(text) - 1;
+    editor_cursor = 1;
+
+    editor_handle_key(2);
+    assert(editor_cursor == 5);
+    editor_handle_key(2);
+    assert(editor_cursor == 9);
+    editor_handle_key(1);
+    assert(editor_cursor == 5);
+
+    int position = 0;
+    for (int line = 0; line < 80; line++) {
+        for (int column = 0; column < 24; column++) {
+            editor_buffer[position++] = 'a';
+        }
+        if (line < 79) editor_buffer[position++] = '\n';
+    }
+    editor_buffer[position] = '\0';
+    editor_length = position;
+    editor_cursor = 10 * 25 + 17;
+    for (int line = 0; line < 50; line++) editor_handle_key(2);
+    assert(editor_cursor == 60 * 25 + 17);
+    for (int line = 0; line < 100; line++) editor_handle_key(2);
+    assert(editor_cursor == 79 * 25 + 17);
+}
+
+static void test_editor_empty_save_slot(void) {
+    editor_buffer[0] = '\0';
+    editor_length = 0;
+    editor_cursor = 0;
+    assert(editor_load_document() == 0);
+    assert(editor_length == 0 && editor_cursor == 0);
+}
+
+static void test_editor_disk_failures_preserve_document(void) {
+    memcpy(editor_buffer, "keep", 5);
+    editor_length = 4;
+    editor_cursor = 4;
+    ata_present = 0;
+
+    assert(editor_load_document() == -1);
+    assert(editor_length == 4 && editor_cursor == 4);
+    assert(strcmp(editor_buffer, "keep") == 0);
+
+    editor_handle_key(15);
+    assert(strcmp(editor_status, "Disk read failed; editor unchanged") == 0);
+    assert(editor_length == 4 && strcmp(editor_buffer, "keep") == 0);
+
+    editor_handle_key(19);
+    assert(strcmp(editor_status, "Save failed: disk missing or I/O error") == 0);
+    ata_present = 1;
+}
+
 static void test_ata_selects_device_before_polling(void) {
     unsigned char sector[512] = {0};
     ata_selected = 0;
@@ -189,6 +300,11 @@ int main(void) {
     test_rtc_formats_and_failure();
     test_timer_counters();
     test_snake_queued_turns();
+    test_snake_full_board_finishes_without_hanging();
+    test_editor_size_limit_and_unsaved_status();
+    test_editor_vertical_navigation();
+    test_editor_empty_save_slot();
+    test_editor_disk_failures_preserve_document();
     test_ata_selects_device_before_polling();
     puts("MogOS stability tests passed");
     return 0;
