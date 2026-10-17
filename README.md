@@ -6,8 +6,10 @@ Snake, Settings, a clock/status bar, and a text editor.
 
 ## Build and run
 
-Build on Ubuntu or WSL. You need `make`, NASM, mtools, dosfstools, xorriso,
-QEMU, and the `i686-elf` cross-compiler on your `PATH`.
+Build on Ubuntu or WSL. You need `make`, GCC with 32-bit support, NASM, mtools,
+dosfstools, xorriso, and QEMU on your `PATH`. If `i686-elf-gcc` and
+`i686-elf-ld` are installed, the build uses them; otherwise, it falls back to
+native `gcc` and `ld` with 32-bit output.
 
 ```sh
 make
@@ -18,6 +20,10 @@ make run_iso
 
 `make run_iso` uses `build/hdd.img` as a writable ATA disk. `make clean`
 preserves this image, so back it up if it contains anything important.
+On WSL, `make run_iso` uses the native Windows QEMU at
+`C:\Program Files\qemu\qemu-system-i386.exe` when available. This avoids a
+transparent WSLg window. Override `WINDOWS_QEMU` if QEMU is installed elsewhere.
+Without native Windows QEMU, it falls back to WSLg's GTK software display.
 
 ## Controls
 
@@ -29,7 +35,15 @@ preserves this image, so back it up if it contains anything important.
   **B** plays the jingle.
 - In Snake: **arrows** or **W/A/S/D** steer; **P** pauses; **Enter** restarts
   after a collision; **Ctrl+H** exits.
-- The terminal accepts `ping`, `run snake`, `about`, `settings`, and `exit`.
+- The terminal accepts `ping`, `fetch`, `run snake`, `run editor`, `about`,
+  `settings`, and `exit`. `fetch` shows MogOS details and the OS image; it
+  reports only runtime details MogOS currently has, such as uptime, CPU usage,
+  and display resolution.
+
+To refresh the embedded fetch image after replacing `img/os.png`, install
+Pillow and run `python3 tools/convert_os_image.py`. The normal kernel build uses
+the checked-in RGB565 image and does not require Pillow.
+The fetch display appears automatically when you enter the desktop after boot.
 
 ## Saving and limitations
 

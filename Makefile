@@ -2,10 +2,17 @@ ASM=nasm
 CC=i686-elf-gcc
 LD=i686-elf-ld
 
+ifeq ($(shell command -v $(CC) >/dev/null 2>&1 && command -v $(LD) >/dev/null 2>&1 && echo yes),)
+$(info i686-elf toolchain not found; using native gcc/ld with -m32.)
+CC=gcc
+LD=ld
+endif
+
 SRC_DIR=src
 TOOLS_DIR=tools
 BUILD_DIR=build
 XORRISO=xorriso
+WINDOWS_QEMU?=/mnt/c/Program Files/qemu/qemu-system-i386.exe
 
 .PHONY: all floppy_image iso run_iso kernel bootloader clean always tools_fat test
 
@@ -41,9 +48,18 @@ $(BUILD_DIR)/mogos.iso: $(BUILD_DIR)/main_floppy.img
 		-o $@ $(BUILD_DIR)/iso
 
 run_iso: iso $(BUILD_DIR)/hdd.img
-	qemu-system-i386 -cdrom $(BUILD_DIR)/mogos.iso -boot d \
-		-drive file=$(BUILD_DIR)/hdd.img,format=raw,if=ide,index=0,media=disk \
-		-audiodev pa,id=snd0 -machine pcspk-audiodev=snd0
+	@if [ -x "$(WINDOWS_QEMU)" ] && grep -qi microsoft /proc/sys/kernel/osrelease; then \
+		echo "Launching native Windows QEMU to avoid a transparent WSLg window."; \
+		"$(WINDOWS_QEMU)" -cdrom "$$(wslpath -w $(BUILD_DIR)/mogos.iso)" -boot d \
+			-display sdl -vga std \
+			-drive file="$$(wslpath -w $(BUILD_DIR)/hdd.img)",format=raw,if=ide,index=0,media=disk \
+			-audiodev dsound,id=snd0 -machine pcspk-audiodev=snd0; \
+	else \
+		qemu-system-i386 -cdrom $(BUILD_DIR)/mogos.iso -boot d \
+			-display gtk,gl=off -vga std \
+			-drive file=$(BUILD_DIR)/hdd.img,format=raw,if=ide,index=0,media=disk \
+			-audiodev pa,id=snd0 -machine pcspk-audiodev=snd0; \
+	fi
 
 #
 # Bootloader
@@ -58,8 +74,8 @@ $(BUILD_DIR)/bootloader.bin: always
 #
 kernel: $(BUILD_DIR)/kernel.bin
 
-$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o
-	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o --oformat binary
+$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o $(BUILD_DIR)/os_image.o
+	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o $(BUILD_DIR)/os_image.o --oformat binary
 
 $(BUILD_DIR)/kernel_entry.o: always $(SRC_DIR)/kernel/main.asm
 	$(ASM) $(SRC_DIR)/kernel/main.asm -f elf32 -o $(BUILD_DIR)/kernel_entry.o
@@ -108,6 +124,10 @@ $(BUILD_DIR)/sprite.o: always $(SRC_DIR)/kernel/sprite.c
 
 $(BUILD_DIR)/snake.o: always $(SRC_DIR)/kernel/snake.c
 	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/snake.c -o $(BUILD_DIR)/snake.o
+
+$(BUILD_DIR)/os_image.o: always $(SRC_DIR)/kernel/os_image.rgb565
+	cp $(SRC_DIR)/kernel/os_image.rgb565 $(BUILD_DIR)/os_image.rgb565
+	objcopy -I binary -O elf32-i386 -B i386 $(BUILD_DIR)/os_image.rgb565 $@
 
 #
 # Tools

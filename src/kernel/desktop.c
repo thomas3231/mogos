@@ -169,6 +169,12 @@ int terminal_pos = 0;
 #define TERMINAL_MAX_LINES 12
 char terminal_history[TERMINAL_MAX_LINES][40];
 int terminal_line_count = 0;
+static int terminal_fetch_visible = 0;
+
+#define FETCH_IMAGE_WIDTH 160
+#define FETCH_IMAGE_HEIGHT 169
+
+extern const unsigned char _binary_build_os_image_rgb565_start[];
 
 #define EDITOR_CAPACITY 2043
 #define EDITOR_CONTENT_X 4
@@ -542,6 +548,39 @@ void draw_menu(void) {
     }
 }
 
+static int fetch_format_unsigned(char* buffer, unsigned int value) {
+    char digits[10];
+    int digit_count = 0;
+    do {
+        digits[digit_count++] = '0' + (value % 10);
+        value /= 10;
+    } while (value != 0);
+
+    int length = 0;
+    while (digit_count > 0) buffer[length++] = digits[--digit_count];
+    buffer[length] = '\0';
+    return length;
+}
+
+static void fetch_draw_text(int x, int y, const char* text,
+                            unsigned char r, unsigned char g, unsigned char b) {
+    for (int i = 0; text[i]; i++) {
+        draw_char(x + i * 9, y, text[i], r, g, b, 1);
+    }
+}
+
+static void fetch_draw_field(int x, int y, const char* label, const char* value,
+                             unsigned char label_r, unsigned char label_g, unsigned char label_b,
+                             unsigned char value_r, unsigned char value_g, unsigned char value_b) {
+    int label_length = 0;
+    while (label[label_length]) {
+        draw_char(x + label_length * 9, y, label[label_length],
+                  label_r, label_g, label_b, 1);
+        label_length++;
+    }
+    fetch_draw_text(x + label_length * 9, y, value, value_r, value_g, value_b);
+}
+
 void draw_terminal(void) {
     if (focus == 1) {
         draw_rect(screen.width / 2, STATUS_BAR_HEIGHT + 1, screen.width / 2, 1, 0xFF, 0xFF, 0x00);
@@ -550,13 +589,77 @@ void draw_terminal(void) {
     int tx = screen.width / 2 + 4;
     int ty = STATUS_BAR_HEIGHT + 4;
 
-    for (int i = 0; i < terminal_line_count; i++) {
-        int cx = tx;
-        for (int j = 0; terminal_history[i][j]; j++) {
-            draw_char(cx, ty, terminal_history[i][j], 0xAA, 0xAA, 0xAA, 1);
-            cx += 9;
+    if (terminal_fetch_visible) {
+        int image_x = tx;
+        int image_y = ty;
+        int info_x = image_x + FETCH_IMAGE_WIDTH + 12;
+        unsigned char* pixels = (unsigned char*)_binary_build_os_image_rgb565_start;
+
+        for (int y = 0; y < FETCH_IMAGE_HEIGHT; y++) {
+            for (int x = 0; x < FETCH_IMAGE_WIDTH; x++) {
+                int offset = (y * FETCH_IMAGE_WIDTH + x) * 2;
+                unsigned short pixel = pixels[offset] | (pixels[offset + 1] << 8);
+                unsigned char red5 = (pixel >> 11) & 0x1F;
+                unsigned char green6 = (pixel >> 5) & 0x3F;
+                unsigned char blue5 = pixel & 0x1F;
+                unsigned char red = (red5 << 3) | (red5 >> 2);
+                unsigned char green = (green6 << 2) | (green6 >> 4);
+                unsigned char blue = (blue5 << 3) | (blue5 >> 2);
+                put_pixel(image_x + x, image_y + y, red, green, blue);
+            }
         }
-        ty += 10;
+
+        const unsigned char accent_r = 0xE0, accent_g = 0x70, accent_b = 0xA0;
+        const unsigned char value_r = 0xD0, value_g = 0xD0, value_b = 0xD0;
+        fetch_draw_text(info_x, ty, "Thomas@MogOS", accent_r, accent_g, accent_b);
+
+        int info_y = ty + 16;
+        for (int i = 0; i < 12; i++) {
+            draw_char(info_x + i * 9, info_y, '-', accent_r, accent_g, accent_b, 1);
+        }
+        info_y += 12;
+
+        char uptime[16];
+        char cpu[8];
+        char display[16];
+        int pos = fetch_format_unsigned(uptime, timer_get_uptime_seconds());
+        uptime[pos++] = ' ';
+        uptime[pos++] = 's';
+        uptime[pos] = '\0';
+
+        pos = fetch_format_unsigned(cpu, timer_get_cpu_usage_percent());
+        cpu[pos++] = '%';
+        cpu[pos] = '\0';
+
+        pos = fetch_format_unsigned(display, screen.width);
+        display[pos++] = 'x';
+        pos += fetch_format_unsigned(display + pos, screen.height);
+        display[pos] = '\0';
+
+        const char* labels[] = {
+            "OS:", "Kernel:", "Shell:", "Uptime:",
+            "CPU:", "Display:", "Apps:"
+        };
+        const char* values[] = {
+            "MogOS 32-bit", "Ring 0", "MogOS terminal", uptime,
+            cpu, display, "Snake, Editor, About, Settings"
+        };
+        for (int i = 0; i < 7; i++) {
+            fetch_draw_field(info_x, info_y, labels[i], values[i],
+                             accent_r, accent_g, accent_b, value_r, value_g, value_b);
+            info_y += 11;
+        }
+
+        ty += FETCH_IMAGE_HEIGHT + 12;
+    } else {
+        for (int i = 0; i < terminal_line_count; i++) {
+            int cx = tx;
+            for (int j = 0; terminal_history[i][j]; j++) {
+                draw_char(cx, ty, terminal_history[i][j], 0xAA, 0xAA, 0xAA, 1);
+                cx += 9;
+            }
+            ty += 10;
+        }
     }
 
     draw_char(tx, ty, '>', 0x00, 0xFF, 0x00, 1);
@@ -579,6 +682,7 @@ void desktop_init(void) {
     terminal_pos = 0;
     terminal_buffer[0] = '\0';
     terminal_line_count = 0;
+    terminal_fetch_visible = 1;
 }
 
 void desktop_draw(void) {
@@ -636,15 +740,21 @@ void shutdown_system(void) {
 }
 
 void run_terminal_command(char* cmd) {
-    char echoed[40];
-    echoed[0] = '>';
-    int i = 0;
-    while (cmd[i] && i < 38) {
-        echoed[i + 1] = cmd[i];
-        i++;
+    int is_fetch = str_equals(cmd, "fetch");
+    if (is_fetch) {
+        terminal_line_count = 0;
+    } else {
+        terminal_fetch_visible = 0;
+        char echoed[40];
+        echoed[0] = '>';
+        int i = 0;
+        while (cmd[i] && i < 38) {
+            echoed[i + 1] = cmd[i];
+            i++;
+        }
+        echoed[i + 1] = '\0';
+        terminal_print_line(echoed);
     }
-    echoed[i + 1] = '\0';
-    terminal_print_line(echoed);
 
     if (str_equals(cmd, "ping")) {
         terminal_print_line("pong");
@@ -658,6 +768,25 @@ void run_terminal_command(char* cmd) {
         terminal_print_line("shutting down...");
         desktop_draw();
         shutdown_system();
+    } else if (str_equals(cmd, "clear")) {
+        terminal_line_count = 0;
+    }else if (str_equals(cmd, "help")) {
+        terminal_print_line("Available commands:");
+        terminal_print_line("ping - test command");
+        terminal_print_line("run snake - launch Snake game");
+        terminal_print_line("about - show about screen");
+        terminal_print_line("settings - open settings menu");
+        terminal_print_line("fetch - show MogOS system info");
+        terminal_print_line("exit - shut down the system");
+        terminal_print_line("clear - clear the terminal history");
+        terminal_print_line("run editor - launch the text editor");
+        terminal_print_line("help - show this help message");
+    }else if (str_equals(cmd, "run editor")) {
+        run_text_editor();
+    }else if (str_equals(cmd, "play jingle")) {
+        boot_jingle_pending = 1;
+    }else if (is_fetch) {
+        terminal_fetch_visible = 1;
     } else {
         terminal_print_line("unknown command");
     }

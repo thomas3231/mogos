@@ -39,7 +39,7 @@ ebr_system_id:              db 'FAT12   '           ; 8 bytes
 
 start:
     ; setup data segments
-    mov ax, 0           ; can't set ds/es directly
+    xor ax, ax          ; can't set ds/es directly
     mov ds, ax
     mov es, ax
     
@@ -87,16 +87,10 @@ start:
     add ax, [bdb_reserved_sectors]      ; ax = LBA of root directory
     push ax
 
-    ; compute size of root directory = (32 * number_of_entries) / bytes_per_sector
+    ; With 512-byte sectors and 32-byte entries, each sector holds 16 entries.
     mov ax, [bdb_dir_entries_count]
-    shl ax, 5                           ; ax *= 32
-    xor dx, dx                          ; dx = 0
-    div word [bdb_bytes_per_sector]     ; number of sectors we need to read
-
-    test dx, dx                         ; if dx != 0, add 1
-    jz .root_dir_after
-    inc ax                              ; division remainder != 0, add 1
-                                        ; this means we have a sector only partially filled with entries
+    add ax, 15
+    shr ax, 4
 .root_dir_after:
 
     ; read root directory
@@ -140,9 +134,9 @@ start:
     call disk_read
 
     ; read kernel and process FAT chain
-    mov bx, KERNEL_LOAD_SEGMENT
-    mov es, bx
-    mov bx, KERNEL_LOAD_OFFSET
+    mov ax, KERNEL_LOAD_SEGMENT
+    mov es, ax
+    xor bx, bx
 
 .load_kernel_loop:
     
@@ -157,6 +151,12 @@ start:
     call disk_read
 
     add bx, [bdb_bytes_per_sector]
+    jnc .kernel_buffer_ready
+    ; Keep the load contiguous when the 16-bit offset wraps.
+    mov ax, es
+    add ax, 0x1000
+    mov es, ax
+.kernel_buffer_ready:
 
     ; compute location of next cluster
     mov ax, [kernel_cluster]
