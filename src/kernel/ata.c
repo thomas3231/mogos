@@ -93,3 +93,30 @@ int ata_write_sector(unsigned int lba, unsigned char* buffer) {
     outb(ATA_COMMAND, 0xE7);
     return ata_wait_complete();
 }
+
+int ata_get_sector_count(unsigned int* sector_count) {
+    if (!sector_count) return 0;
+
+    outb(ATA_DRIVE_HEAD, 0xA0);
+    for (int i = 0; i < 4; i++) inb(ATA_ALT_STATUS);
+    if (!ata_wait_ready()) return 0;
+    if (inb(ATA_LBA_MID) != 0 || inb(ATA_LBA_HIGH) != 0) return 0;
+
+    outb(ATA_COMMAND, 0xEC);
+    if (!ata_wait_drq()) return 0;
+
+    unsigned int lba28_sector_count = 0;
+    for (int i = 0; i < 256; i++) {
+        unsigned short word = inw(ATA_DATA);
+        if (i == 60) lba28_sector_count = word;
+        if (i == 61) lba28_sector_count |= (unsigned int)word << 16;
+    }
+    if (!ata_wait_complete() ||
+        lba28_sector_count == 0 ||
+        lba28_sector_count > ATA_LBA_LIMIT) {
+        return 0;
+    }
+
+    *sector_count = lba28_sector_count;
+    return 1;
+}

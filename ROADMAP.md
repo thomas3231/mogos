@@ -25,8 +25,9 @@ buffer.
 - Phase 1 was completed and re-verified in QEMU on 16 October 2026. The manual
   checklist, no-disk behavior, empty/full editor cases, and rebuild persistence
   passed; see [PRESENTATION.md](./PRESENTATION.md) and the packaged screenshots.
-- There is no general filesystem, named-file explorer, mouse driver,
-  networking, user-mode process model, or USB-disk boot path.
+- The nested MogFS core, keyboard File Explorer, and editor file picker are
+  implemented; QEMU reboot/persistence testing remains. There is no mouse
+  driver, networking, user-mode process model, or USB-disk boot path.
 - The bootable ISO, separate blank ATA demo disk, checksums, and QA screenshots
   are in [release/core-demo-2026-10-16/](./release/core-demo-2026-10-16/).
   The final report and backup recording still need to be prepared.
@@ -76,26 +77,30 @@ layer exists.
 
 #### Storage design and tests
 
-- Define a block-device interface over the working ATA sector routines.
-- Reserve an explicit filesystem region that cannot overlap the existing save
-  slot at LBA 1–5. Document the layout and reject undersized disks.
-- Specify a versioned, fixed-size on-disk format: superblock, bounded
-  single-level directory, and a simple allocation bitmap or fixed-block table.
-- Validate every on-disk count, name, length, version, and LBA before use.
-  Reject corrupt or unknown formats rather than guessing or formatting
+- [x] Define a block-device interface over the ATA sector routines and read
+  the device capacity with ATA IDENTIFY.
+- [x] Reserve and document LBA 16–536, separate from the editor's LBA 1–5
+  save slot; reject devices smaller than the filesystem region.
+- [x] Specify a versioned, fixed-size format with a superblock, bounded nested
+  directory table, and fixed dual-bank file slots.
+- [x] Validate checksums, names, lengths, version, and directory metadata.
+  Mounting rejects corrupt or unsupported volumes and never formats
   automatically.
-- Implement and host-test format/mount, list, create, read, write, delete,
-  full-volume behavior, corrupt metadata, invalid names, out-of-range requests,
-  and injected I/O failures using an in-memory disk mock.
+- [x] Host-test format/mount, list, create, read, write, delete, full-volume
+  behavior, corrupt metadata, invalid names, undersized devices, and injected
+  I/O failures with an in-memory disk mock.
+
+The nested filesystem core and keyboard File Explorer are integrated. Final
+QEMU persistence/reboot testing on a disposable disk remains before this phase
+is complete.
 
 #### UI and editor integration
 
-- Add a keyboard-first file manager: list/select, create, open, delete, and
-  visible error/status messages.
-- Add a desktop entry only after the file-manager API works independently.
-- Connect editor open/save by filename after storage round-trips pass. Keep the
-  old save slot readable or clearly report that migration is not supported;
-  never overwrite it implicitly.
+- [x] Add a keyboard-first File Explorer with nested directories, text files,
+  open/delete, and visible error/status messages.
+- [x] Add a desktop entry after the file-manager API works independently.
+- [x] Connect editor open/save by filename with a Save As picker. Keep the old
+  save slot readable and separate; never overwrite it implicitly.
 - Test power-off/reboot persistence in QEMU using disposable disk images.
 
 **Exit gate:** Filesystem host tests pass, QEMU create/write/reboot/read/delete

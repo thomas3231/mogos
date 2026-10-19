@@ -3,5 +3,6 @@
 
 int ata_read_sector(unsigned int lba, unsigned char* buffer);
 int ata_write_sector(unsigned int lba, unsigned char* buffer);
+int ata_get_sector_count(unsigned int* sector_count);
 
 #endif

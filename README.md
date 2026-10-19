@@ -29,8 +29,14 @@ Without native Windows QEMU, it falls back to WSLg's GTK software display.
 
 - Press **Enter** at the welcome screen. Select desktop apps with **Up/Down**
   and **Enter**. **Ctrl+H** returns from an app.
+- In the File Explorer: **arrows** select; **Enter** opens; **Backspace** goes
+  to the parent; **N** creates a `.txt` file; **D** creates a folder; **X**
+  deletes the selected item after confirmation. If the disk has no MogFS
+  volume, **X** offers to format only its reserved region after confirmation.
 - In the editor: type to edit; **arrows** move; **Backspace** deletes;
-  **Ctrl+S/F2** saves; **Ctrl+O/F3** loads.
+  **Ctrl+S** opens Save As for new documents and saves the chosen file
+  thereafter; **Ctrl+O** opens the file picker; **F2/F3** save/load the legacy
+  single-document slot.
 - In Settings: **A** toggles green editor text, **C** toggles clock seconds,
   **B** plays the jingle.
 - In Snake: **arrows** or **W/A/S/D** steer; **P** pauses; **Enter** restarts
@@ -41,12 +47,21 @@ Without native Windows QEMU, it falls back to WSLg's GTK software display.
 
 The fetch summary appears automatically when you enter the desktop after boot.
 
+## Files and storage
+
+The File Explorer creates nested folders and `.txt` files on the attached ATA
+disk. MogFS supports 32 directory entries and eight files up to 16 KiB each.
+The first **Ctrl+S** in a new editor document opens Save As; later saves update
+that file. **Ctrl+O** opens the file picker. **F2/F3** retain access to the old
+single-document save slot. MogFS reserves LBA 16–536 and does not format
+automatically; the explorer requires confirmation before initializing that
+region. See [the storage format](./docs/storage-format.md).
+
 ## Saving and limitations
 
-The editor saves one document of up to 2,042 characters to a fixed slot on the
-attached ATA disk. This is a prototype, not a filesystem: there are no
-filenames, directories, or multiple documents. The ISO is read-only, so it
-cannot hold saved changes. Without an ATA disk, editing is temporary.
+The editor's legacy save slot holds one document of up to 2,042 characters.
+New text files use MogFS. The ISO is read-only, so it cannot hold saved
+changes. Without an ATA disk, editing and file management are unavailable.
 
 The ISO uses legacy-BIOS El Torito floppy emulation. It is not a USB-hybrid
 image; writing it directly to a USB drive will not make it bootable. MogOS does
@@ -55,8 +70,9 @@ scheduler.
 
 ## Tests and demo package
 
-`make test` runs host-side checks for selected RTC, timer, ATA, editor, and
-Snake behavior. Also boot the ISO in QEMU before relying on a build.
+`make test` runs host-side checks for RTC, timer, ATA, editor, Snake, and MogFS
+format/mount, nested-path, persistence, and I/O-failure behavior. Also boot the
+ISO in QEMU before relying on a build.
 
 The [Phase 1 demo package](./release/core-demo-2026-10-16/) contains a tested
 ISO, a separate blank 16 MiB ATA disk, checksums, and screenshots. The disk is

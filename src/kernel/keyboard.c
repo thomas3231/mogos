@@ -170,7 +170,7 @@ void keyboard_handler_c(void) {
     }
 
     if (code == 0x3C) {
-        desktop_handle_key(19);
+        desktop_handle_key(20);
         return;
     }
     if (code == 0x3D) {
@@ -187,7 +187,7 @@ void keyboard_handler_c(void) {
         return;
     }
     if (ctrl_pressed && code == 0x18) {
-        desktop_handle_key(15);
+        desktop_handle_key(17);
         return;
     }
 

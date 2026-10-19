@@ -74,8 +74,8 @@ $(BUILD_DIR)/bootloader.bin: always
 #
 kernel: $(BUILD_DIR)/kernel.bin
 
-$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o
-	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o --oformat binary
+$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/mogfs.o $(BUILD_DIR)/file_manager.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o
+	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/mogfs.o $(BUILD_DIR)/file_manager.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o --oformat binary
 
 $(BUILD_DIR)/kernel_entry.o: always $(SRC_DIR)/kernel/main.asm
 	$(ASM) $(SRC_DIR)/kernel/main.asm -f elf32 -o $(BUILD_DIR)/kernel_entry.o
@@ -110,6 +110,12 @@ $(BUILD_DIR)/speaker.o: always $(SRC_DIR)/kernel/speaker.c
 $(BUILD_DIR)/ata.o: always $(SRC_DIR)/kernel/ata.c
 	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/ata.c -o $(BUILD_DIR)/ata.o
 
+$(BUILD_DIR)/mogfs.o: always $(SRC_DIR)/kernel/mogfs.c $(SRC_DIR)/kernel/mogfs.h
+	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/mogfs.c -o $(BUILD_DIR)/mogfs.o
+
+$(BUILD_DIR)/file_manager.o: always $(SRC_DIR)/kernel/file_manager.c $(SRC_DIR)/kernel/file_manager.h $(SRC_DIR)/kernel/mogfs.h
+	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/file_manager.c -o $(BUILD_DIR)/file_manager.o
+
 $(BUILD_DIR)/floppy.o: always $(SRC_DIR)/kernel/floppy.c
 	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/floppy.c -o $(BUILD_DIR)/floppy.o
 
@@ -136,7 +142,7 @@ $(BUILD_DIR)/tools/fat: always $(TOOLS_DIR)/fat/fat.c
 test: $(BUILD_DIR)/tools/stability-test
 	$(BUILD_DIR)/tools/stability-test
 
-$(BUILD_DIR)/tools/stability-test: tests/stability_test.c $(SRC_DIR)/kernel/rtc.c $(SRC_DIR)/kernel/timer.c $(SRC_DIR)/kernel/snake.c $(SRC_DIR)/kernel/ata.c $(SRC_DIR)/kernel/desktop.c
+$(BUILD_DIR)/tools/stability-test: tests/stability_test.c $(SRC_DIR)/kernel/rtc.c $(SRC_DIR)/kernel/timer.c $(SRC_DIR)/kernel/snake.c $(SRC_DIR)/kernel/ata.c $(SRC_DIR)/kernel/mogfs.c $(SRC_DIR)/kernel/file_manager.c $(SRC_DIR)/kernel/desktop.c
 	mkdir -p $(BUILD_DIR)/tools
 	gcc -std=gnu17 -Wall -Wextra -Wno-pointer-to-int-cast -ffunction-sections -fdata-sections -I$(SRC_DIR)/kernel -Wl,--gc-sections -o $@ $^
 

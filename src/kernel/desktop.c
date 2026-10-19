@@ -7,6 +7,8 @@
 #include "snake.h"
 #include "ata.h"
 #include "speaker.h"
+#include "mogfs.h"
+#include "file_manager.h"
 
 
 
@@ -55,7 +57,7 @@ void run_about(void) {
         "A writable disk joined the party.",
         "Five sectors later: history.",
         "",
-        "No filesystem. No mouse. No network.",
+        "MogFS files. No mouse. No network.",
         "Just one document and unreasonable",
         "confidence in a 32-bit kernel.",
         "",
@@ -152,13 +154,14 @@ void run_settings(void) {
 }
 
 struct menu_item menu_items[] = {
+    { "File Explorer" },
     { "Snake" },
     { "Text Editor" },
     { "About" },
     { "Settings" },
     { "Exit" },
 };
-int menu_item_count = 5;
+int menu_item_count = 6;
 int menu_selected = 0;
 int menu_scroll_offset = 0;
 #define MENU_VISIBLE_ROWS 8
@@ -171,7 +174,8 @@ char terminal_history[TERMINAL_MAX_LINES][40];
 int terminal_line_count = 0;
 static int terminal_fetch_visible = 0;
 
-#define EDITOR_CAPACITY 2043
+#define EDITOR_CAPACITY (MOGFS_FILE_MAX_SIZE + 1U)
+#define EDITOR_LEGACY_MAX_SIZE 2042
 #define EDITOR_CONTENT_X 4
 #define EDITOR_CONTENT_Y (STATUS_BAR_HEIGHT + 16)
 #define EDITOR_CHAR_WIDTH 9
@@ -187,6 +191,11 @@ char editor_status[48];
 int editor_length = 0;
 int editor_cursor = 0;
 int editor_scroll_row = 0;
+static char editor_current_path[MOGFS_PATH_SIZE];
+static int editor_dirty = 0;
+static unsigned char editor_file_image[MOGFS_FILE_MAX_SIZE];
+
+void editor_handle_key(char c);
 
 void editor_set_status(const char* message) {
     int i = 0;
@@ -251,7 +260,7 @@ void editor_draw(void) {
     fill_screen(0x10, 0x10, 0x10);
     draw_rect(0, 0, screen.width, STATUS_BAR_HEIGHT, 0x00, 0x00, 0x00);
 
-    char* heading = "EDITOR  Ctrl+S/F2:save Ctrl+O/F3:load Enter:new line arrows:move Ctrl+H:exit";
+    char* heading = "EDITOR Ctrl+S:save Ctrl+O:open F2/F3:legacy slot Ctrl+H:exit";
     for (int i = 0; heading[i]; i++) {
         draw_char(4 + i * EDITOR_CHAR_WIDTH, 1, heading[i], 0xFF, 0xFF, 0xFF, 1);
     }
@@ -306,6 +315,7 @@ void editor_draw(void) {
 }
 
 int editor_save_document(void) {
+    if (editor_length > EDITOR_LEGACY_MAX_SIZE) return 0;
     for (int i = 0; i < EDITOR_SAVE_BYTES; i++) editor_save_image[i] = 0;
     editor_save_image[0] = 'M';
     editor_save_image[1] = 'O';
@@ -352,7 +362,8 @@ int editor_load_document(void) {
     }
 
     int length = editor_save_image[4] | (editor_save_image[5] << 8);
-    if (length >= EDITOR_CAPACITY || EDITOR_SAVE_HEADER + length > EDITOR_SAVE_BYTES) {
+    if (length > EDITOR_LEGACY_MAX_SIZE ||
+        EDITOR_SAVE_HEADER + length > EDITOR_SAVE_BYTES) {
         return -2;
     }
 
@@ -366,15 +377,93 @@ int editor_load_document(void) {
     return 1;
 }
 
+int editor_open_file(const char* path) {
+    uint32_t size = 0;
+    int result = file_manager_read_file(path, editor_file_image,
+                                        sizeof(editor_file_image), &size);
+    if (result != MOGFS_OK || size >= EDITOR_CAPACITY) return 0;
+    for (uint32_t i = 0; i < size; i++) {
+        unsigned char c = editor_file_image[i];
+        if (c != '\n' && (c < 32 || c > 126)) return 0;
+    }
+
+    for (uint32_t i = 0; i < size; i++) editor_buffer[i] = editor_file_image[i];
+    editor_length = (int)size;
+    editor_cursor = editor_length;
+    editor_buffer[editor_length] = '\0';
+    editor_scroll_row = 0;
+    uint32_t path_length = 0;
+    while (path[path_length] && path_length < MOGFS_PATH_SIZE - 1U) {
+        editor_current_path[path_length] = path[path_length];
+        path_length++;
+    }
+    editor_current_path[path_length] = '\0';
+    editor_dirty = 0;
+    app_running = 1;
+    current_app_key_handler = editor_handle_key;
+    editor_set_status("Opened text file");
+    editor_draw();
+    return 1;
+}
+
+int editor_save_file(const char* path) {
+    uint32_t path_length = 0;
+    if (!path) return 0;
+    while (path[path_length] && path_length < MOGFS_PATH_SIZE - 1U) {
+        path_length++;
+    }
+    if (path[path_length]) return 0;
+    int result = file_manager_write_file(path,
+        (const unsigned char*)editor_buffer, (uint32_t)editor_length);
+    if (result != MOGFS_OK) return 0;
+    for (uint32_t i = 0; i <= path_length; i++) {
+        editor_current_path[i] = path[i];
+    }
+    editor_dirty = 0;
+    editor_set_status("Saved text file");
+    app_running = 1;
+    current_app_key_handler = editor_handle_key;
+    editor_draw();
+    return 1;
+}
+
+int editor_has_unsaved_changes(void) {
+    return editor_dirty;
+}
+
 void editor_handle_key(char c) {
     if (c == 19) {
-        editor_set_status(editor_save_document() ? "Saved to attached ATA disk" :
-                          "Save failed: disk missing or I/O error");
+        if (editor_current_path[0]) {
+            int result = file_manager_write_file(editor_current_path,
+                (const unsigned char*)editor_buffer, (uint32_t)editor_length);
+            if (result == MOGFS_OK) {
+                editor_dirty = 0;
+                editor_set_status("Saved text file");
+            } else {
+                editor_set_status("Save failed: disk I/O error");
+            }
+            editor_draw();
+        } else {
+            file_manager_start(FILE_MANAGER_SAVE);
+        }
+        return;
+    }
+    if (c == 17) {
+        file_manager_start(FILE_MANAGER_OPEN);
+        return;
+    }
+    if (c == 20) {
+        editor_set_status(editor_save_document() ? "Saved to legacy slot (F3 loads)" :
+                          "Legacy save failed: disk I/O error");
         editor_draw();
         return;
     }
     if (c == 15) {
         int result = editor_load_document();
+        if (result > 0) {
+            editor_current_path[0] = '\0';
+            editor_dirty = 0;
+        }
         editor_set_status(result > 0 ? "Loaded saved document" :
                           result == 0 ? "No saved document found" :
                           result == -2 ? "Saved document is corrupt; editor unchanged" :
@@ -404,7 +493,7 @@ void editor_handle_key(char c) {
         editor_length--;
         changed = 1;
     } else if (c == '\n' || (c >= 32 && c < 127)) {
-        if (editor_length < EDITOR_CAPACITY - 1) {
+        if (editor_length < (int)EDITOR_CAPACITY - 1) {
             for (int i = editor_length; i > editor_cursor; i--) {
                 editor_buffer[i] = editor_buffer[i - 1];
             }
@@ -417,7 +506,10 @@ void editor_handle_key(char c) {
         }
     }
 
-    if (changed) editor_set_status("Unsaved changes");
+    if (changed) {
+        editor_dirty = 1;
+        editor_set_status("Unsaved changes");
+    }
     editor_draw();
 }
 
@@ -428,9 +520,11 @@ void run_text_editor(void) {
     editor_cursor = 0;
     editor_scroll_row = 0;
     editor_buffer[0] = '\0';
+    editor_current_path[0] = '\0';
+    editor_dirty = 0;
     int result = editor_load_document();
     editor_set_status(result > 0 ? "Loaded saved document" :
-                      result == 0 ? "New document; Ctrl+S to save" :
+                      result == 0 ? "New document; Ctrl+S to Save As" :
                       result == -2 ? "Saved document is corrupt; starting empty" :
                       "Cannot read save slot; edits are temporary");
     editor_draw();
@@ -803,7 +897,9 @@ void desktop_handle_key(char c) {
             }
             desktop_draw();
         } else if (c == '\n') {
-            if (str_equals(menu_items[menu_selected].label, "Snake")) {
+            if (str_equals(menu_items[menu_selected].label, "File Explorer")) {
+                file_manager_start(FILE_MANAGER_BROWSE);
+            } else if (str_equals(menu_items[menu_selected].label, "Snake")) {
                 run_snake();
             } else if (str_equals(menu_items[menu_selected].label, "Text Editor")) {
                 run_text_editor();

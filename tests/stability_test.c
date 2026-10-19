@@ -7,6 +7,7 @@
 #include "timer.h"
 #include "snake.h"
 #include "ata.h"
+#include "mogfs.h"
 
 struct screen_info screen;
 
@@ -16,8 +17,18 @@ static int cmos_update_stuck;
 static int ata_selected;
 static int ata_present = 1;
 static unsigned char ata_status;
+static unsigned char ata_command;
 static unsigned int ata_data_words;
 static unsigned int ata_write_words;
+static unsigned int ata_identify_sector_count = 32768;
+
+#define MOCK_DISK_SECTORS (MOGFS_START_LBA + MOGFS_REQUIRED_SECTORS)
+struct mock_disk {
+    unsigned int sector_count;
+    unsigned char sectors[MOCK_DISK_SECTORS][MOGFS_SECTOR_SIZE];
+    int fail_read_lba;
+    int fail_write_lba;
+};
 
 extern volatile unsigned int tick_count;
 extern volatile unsigned int uptime_seconds;
@@ -44,7 +55,8 @@ struct test_snake_segment {
 extern struct test_snake_segment snake_body[128];
 extern void snake_place_food(void);
 
-extern char editor_buffer[2043];
+#define TEST_EDITOR_CAPACITY (MOGFS_FILE_MAX_SIZE + 1U)
+extern char editor_buffer[TEST_EDITOR_CAPACITY];
 extern char editor_status[48];
 extern int editor_length;
 extern int editor_cursor;
@@ -60,8 +72,10 @@ void outb(unsigned short port, unsigned char value) {
     }
     if (port == 0x1F7 && ata_selected) {
         ata_data_words = 0;
+        ata_command = value;
         ata_status = ata_present ?
-                     value == 0x20 || value == 0x30 ? 0x58 : 0x50 : 0;
+                     value == 0x20 || value == 0x30 || value == 0xEC ?
+                     0x58 : 0x50 : 0;
     }
 }
 
@@ -82,7 +96,14 @@ void outw(unsigned short port, unsigned short value) {
 
 unsigned short inw(unsigned short port) {
     if (port == 0x1F0 && ata_status == 0x58) {
+        unsigned int word_index = ata_data_words;
         if (++ata_data_words == 256) ata_status = 0x50;
+        if (ata_command == 0xEC && word_index == 60) {
+            return (unsigned short)ata_identify_sector_count;
+        }
+        if (ata_command == 0xEC && word_index == 61) {
+            return (unsigned short)(ata_identify_sector_count >> 16);
+        }
         return 0;
     }
     return 0;
@@ -213,18 +234,21 @@ static void test_snake_full_board_finishes_without_hanging(void) {
 static void test_editor_size_limit_and_unsaved_status(void) {
     screen.width = 1024;
     screen.height = 768;
-    editor_length = 2042;
+    editor_length = TEST_EDITOR_CAPACITY - 1U;
     editor_cursor = editor_length;
     memset(editor_buffer, 'x', editor_length);
     editor_buffer[editor_length] = '\0';
 
     editor_handle_key('y');
-    assert(editor_length == 2042 && editor_cursor == 2042);
-    assert(editor_buffer[2041] == 'x' && editor_buffer[2042] == '\0');
+    assert(editor_length == TEST_EDITOR_CAPACITY - 1U &&
+           editor_cursor == TEST_EDITOR_CAPACITY - 1U);
+    assert(editor_buffer[TEST_EDITOR_CAPACITY - 2U] == 'x' &&
+           editor_buffer[TEST_EDITOR_CAPACITY - 1U] == '\0');
     assert(strcmp(editor_status, "Document full; delete text to continue") == 0);
 
     editor_handle_key('\b');
-    assert(editor_length == 2041 && editor_cursor == 2041);
+    assert(editor_length == TEST_EDITOR_CAPACITY - 2U &&
+           editor_cursor == TEST_EDITOR_CAPACITY - 2U);
     assert(strcmp(editor_status, "Unsaved changes") == 0);
 }
 
@@ -279,8 +303,8 @@ static void test_editor_disk_failures_preserve_document(void) {
     assert(strcmp(editor_status, "Disk read failed; editor unchanged") == 0);
     assert(editor_length == 4 && strcmp(editor_buffer, "keep") == 0);
 
-    editor_handle_key(19);
-    assert(strcmp(editor_status, "Save failed: disk missing or I/O error") == 0);
+    editor_handle_key(20);
+    assert(strcmp(editor_status, "Legacy save failed: disk I/O error") == 0);
     ata_present = 1;
 }
 
@@ -296,6 +320,295 @@ static void test_ata_selects_device_before_polling(void) {
     assert(ata_write_words == 256);
 }
 
+static void test_ata_sector_count_initializes_filesystem_device(void) {
+    struct mogfs_block_device device = {0};
+    unsigned int sectors = 0;
+
+    ata_selected = 0;
+    ata_present = 1;
+    ata_status = 0;
+    assert(ata_get_sector_count(&sectors));
+    assert(sectors == ata_identify_sector_count);
+    assert(mogfs_ata_device_init(&device));
+    assert(device.sector_count == ata_identify_sector_count);
+    assert(device.read_sector != 0 && device.write_sector != 0);
+
+    ata_present = 0;
+    sectors = 123;
+    assert(!ata_get_sector_count(&sectors));
+    assert(sectors == 123);
+    assert(!mogfs_ata_device_init(&device));
+    ata_present = 1;
+}
+
+static int mock_read_sector(void* context, unsigned int lba,
+                            unsigned char* buffer) {
+    struct mock_disk* disk = context;
+    if (!buffer || lba >= disk->sector_count ||
+        (int)lba == disk->fail_read_lba) {
+        return 0;
+    }
+    memcpy(buffer, disk->sectors[lba], MOGFS_SECTOR_SIZE);
+    return 1;
+}
+
+static int mock_write_sector(void* context, unsigned int lba,
+                             unsigned char* buffer) {
+    struct mock_disk* disk = context;
+    if (!buffer || lba >= disk->sector_count ||
+        (int)lba == disk->fail_write_lba) {
+        return 0;
+    }
+    memcpy(disk->sectors[lba], buffer, MOGFS_SECTOR_SIZE);
+    return 1;
+}
+
+static unsigned int test_crc32(const unsigned char* data, unsigned int size) {
+    unsigned int crc = 0xFFFFFFFFU;
+    for (unsigned int i = 0; i < size; i++) {
+        crc ^= data[i];
+        for (unsigned int bit = 0; bit < 8; bit++) {
+            unsigned int mask = 0U - (crc & 1U);
+            crc = (crc >> 1) ^ (0xEDB88320U & mask);
+        }
+    }
+    return ~crc;
+}
+
+static void store_u32(unsigned char* buffer, unsigned int value) {
+    buffer[0] = (unsigned char)value;
+    buffer[1] = (unsigned char)(value >> 8);
+    buffer[2] = (unsigned char)(value >> 16);
+    buffer[3] = (unsigned char)(value >> 24);
+}
+
+static void test_mogfs_storage_and_file_operations(void) {
+    static struct mock_disk disk;
+    struct mogfs_block_device device = {
+        &disk, MOCK_DISK_SECTORS, mock_read_sector, mock_write_sector
+    };
+    struct mogfs filesystem;
+    struct mogfs_file_info files[MOGFS_ENTRY_COUNT];
+    unsigned char content[700];
+    unsigned char maximum_content[MOGFS_FILE_MAX_SIZE];
+    unsigned char read_buffer[MOGFS_FILE_MAX_SIZE];
+    unsigned int count = 99;
+    unsigned int read_size = 0;
+
+    memset(&disk, 0xA5, sizeof(disk));
+    disk.sector_count = MOCK_DISK_SECTORS;
+    disk.fail_read_lba = -1;
+    disk.fail_write_lba = -1;
+    for (unsigned int lba = 1; lba <= 5; lba++) {
+        memset(disk.sectors[lba], 0x5A, MOGFS_SECTOR_SIZE);
+    }
+
+    assert(mogfs_mount(&filesystem, &device) == MOGFS_ERROR_CORRUPT);
+    struct mogfs_block_device undersized = device;
+    undersized.sector_count--;
+    assert(mogfs_format(&undersized) == MOGFS_ERROR_INVALID_ARGUMENT);
+    assert(mogfs_format(&device) == MOGFS_OK);
+    for (unsigned int lba = 1; lba <= 5; lba++) {
+        for (unsigned int i = 0; i < MOGFS_SECTOR_SIZE; i++) {
+            assert(disk.sectors[lba][i] == 0x5A);
+        }
+    }
+    for (unsigned int lba = 6; lba < MOGFS_START_LBA; lba++) {
+        assert(disk.sectors[lba][0] == 0xA5);
+    }
+    assert(disk.sectors[MOGFS_START_LBA + 1U +
+                        MOGFS_DIRECTORY_BANK_COUNT *
+                        MOGFS_DIRECTORY_SECTORS][0] == 0xA5);
+
+    assert(mogfs_mount(&filesystem, &undersized) ==
+           MOGFS_ERROR_INVALID_ARGUMENT);
+    assert(mogfs_mount(&filesystem, &device) == MOGFS_OK);
+    assert(mogfs_list(&filesystem, "/", files, MOGFS_ENTRY_COUNT, &count) ==
+           MOGFS_OK);
+    assert(count == 0);
+
+    assert(mogfs_create_file(&filesystem, "/", "bad/name") ==
+           MOGFS_ERROR_INVALID_ARGUMENT);
+    assert(mogfs_create_file(&filesystem, "/", "..") ==
+           MOGFS_ERROR_INVALID_ARGUMENT);
+    assert(mogfs_create_file(&filesystem, "/",
+                        "this_name_is_longer_than_thirty_one") ==
+           MOGFS_ERROR_INVALID_ARGUMENT);
+    char maximum_name[MOGFS_FILE_NAME_SIZE] = "1234567890123456789012345678901";
+    assert(mogfs_create_file(&filesystem, "/", maximum_name) == MOGFS_OK);
+    assert(mogfs_delete(&filesystem,
+                        "/1234567890123456789012345678901") == MOGFS_OK);
+    assert(mogfs_create_file(&filesystem, "/", "notes.txt") == MOGFS_OK);
+    assert(mogfs_create_file(&filesystem, "/", "notes.txt") ==
+           MOGFS_ERROR_ALREADY_EXISTS);
+    assert(mogfs_create_directory(&filesystem, "/", "Documents") == MOGFS_OK);
+    assert(mogfs_create_directory(&filesystem, "/Documents", "Work") ==
+           MOGFS_OK);
+    assert(mogfs_create_file(&filesystem, "/Documents/Work", "notes.txt") ==
+           MOGFS_OK);
+    assert(mogfs_create_file(&filesystem, "/missing", "file.txt") ==
+           MOGFS_ERROR_NOT_FOUND);
+    assert(mogfs_delete(&filesystem, "/Documents") == MOGFS_ERROR_NOT_EMPTY);
+
+    for (unsigned int i = 0; i < sizeof(content); i++) {
+        content[i] = (unsigned char)(i * 17U);
+    }
+    assert(mogfs_write(&filesystem, "/Documents/Work/notes.txt", content,
+                       sizeof(content)) == MOGFS_OK);
+    assert(mogfs_read(&filesystem, "/Documents/Work/notes.txt", read_buffer,
+                      sizeof(read_buffer), &read_size) == MOGFS_OK);
+    assert(read_size == sizeof(content));
+    assert(memcmp(content, read_buffer, sizeof(content)) == 0);
+    assert(mogfs_list(&filesystem, "/Documents/Work", files, MOGFS_ENTRY_COUNT,
+                      &count) == MOGFS_OK);
+    assert(count == 1 && strcmp(files[0].name, "notes.txt") == 0);
+    assert(mogfs_delete(&filesystem, "/Documents/Work/notes.txt") == MOGFS_OK);
+    assert(mogfs_delete(&filesystem, "/Documents/Work") == MOGFS_OK);
+    assert(mogfs_write(&filesystem, "/notes.txt", content, sizeof(content)) ==
+           MOGFS_OK);
+    assert(mogfs_read(&filesystem, "/notes.txt", read_buffer,
+                      sizeof(read_buffer), &read_size) == MOGFS_OK);
+    assert(read_size == sizeof(content));
+    assert(memcmp(content, read_buffer, sizeof(content)) == 0);
+
+    memset(read_buffer, 0xCC, sizeof(read_buffer));
+    read_size = 1234;
+    assert(mogfs_read(&filesystem, "/notes.txt", read_buffer, 10, &read_size) ==
+           MOGFS_ERROR_BUFFER_TOO_SMALL);
+    assert(read_size == 1234 && read_buffer[0] == 0xCC);
+    assert(mogfs_write(&filesystem, "/notes.txt", content,
+                       MOGFS_FILE_MAX_SIZE + 1U) == MOGFS_ERROR_TOO_LARGE);
+
+    disk.fail_write_lba = MOGFS_START_LBA + 1U +
+        MOGFS_DIRECTORY_BANK_COUNT * MOGFS_DIRECTORY_SECTORS + 1U;
+    assert(mogfs_write(&filesystem, "/notes.txt", content, sizeof(content)) ==
+           MOGFS_ERROR_IO);
+    disk.fail_write_lba = -1;
+    assert(mogfs_read(&filesystem, "/notes.txt", read_buffer,
+                      sizeof(read_buffer), &read_size) == MOGFS_OK);
+    assert(read_size == sizeof(content));
+    assert(memcmp(content, read_buffer, sizeof(content)) == 0);
+
+    disk.fail_read_lba = MOGFS_START_LBA + 1U +
+        MOGFS_DIRECTORY_BANK_COUNT * MOGFS_DIRECTORY_SECTORS +
+        MOGFS_FILE_MAX_SIZE / MOGFS_SECTOR_SIZE + 1U;
+    read_size = 1234;
+    assert(mogfs_read(&filesystem, "/notes.txt", read_buffer,
+                      sizeof(read_buffer), &read_size) == MOGFS_ERROR_IO);
+    assert(read_size == 1234);
+    disk.fail_read_lba = -1;
+
+    disk.fail_write_lba = MOGFS_START_LBA + 1U +
+        (1U - filesystem.active_directory_bank) * MOGFS_DIRECTORY_SECTORS + 1U;
+    assert(mogfs_create_file(&filesystem, "/", "not-saved") ==
+           MOGFS_ERROR_IO);
+    disk.fail_write_lba = -1;
+    disk.fail_write_lba = MOGFS_START_LBA;
+    assert(mogfs_create_file(&filesystem, "/", "not-committed") ==
+           MOGFS_ERROR_IO);
+    disk.fail_write_lba = -1;
+    assert(mogfs_mount(&filesystem, &device) == MOGFS_OK);
+    assert(mogfs_list(&filesystem, "/", files, MOGFS_ENTRY_COUNT, &count) ==
+           MOGFS_OK);
+    assert(count == 2 && strcmp(files[0].name, "notes.txt") == 0);
+
+    for (unsigned int i = 1; i < MOGFS_FILE_COUNT; i++) {
+        char name[8] = "file0";
+        name[4] = (char)('0' + i);
+        assert(mogfs_create_file(&filesystem, "/", name) == MOGFS_OK);
+    }
+    assert(mogfs_create_file(&filesystem, "/", "full") ==
+           MOGFS_ERROR_NO_SPACE);
+    assert(mogfs_list(&filesystem, "/", files, MOGFS_ENTRY_COUNT, &count) ==
+           MOGFS_OK);
+    assert(count == MOGFS_FILE_COUNT + 1U);
+    assert(mogfs_list(&filesystem, "/", files, 1, &count) ==
+           MOGFS_ERROR_BUFFER_TOO_SMALL);
+
+    for (unsigned int i = 0; i < sizeof(maximum_content); i++) {
+        maximum_content[i] = (unsigned char)(i * 29U);
+    }
+    assert(mogfs_write(&filesystem, "/file1", maximum_content,
+                       sizeof(maximum_content)) == MOGFS_OK);
+    assert(mogfs_read(&filesystem, "/file1", read_buffer,
+                      sizeof(read_buffer), &read_size) == MOGFS_OK);
+    assert(read_size == sizeof(maximum_content));
+    assert(memcmp(maximum_content, read_buffer, sizeof(maximum_content)) == 0);
+
+    assert(mogfs_write(&filesystem, "/file2", 0, 0) == MOGFS_OK);
+    assert(mogfs_read(&filesystem, "/file2", 0, 0, &read_size) == MOGFS_OK);
+    assert(read_size == 0);
+
+    assert(mogfs_mount(&filesystem, &device) == MOGFS_OK);
+    assert(mogfs_read(&filesystem, "/notes.txt", read_buffer,
+                      sizeof(read_buffer), &read_size) == MOGFS_OK);
+    assert(read_size == sizeof(content));
+    assert(memcmp(content, read_buffer, sizeof(content)) == 0);
+
+    disk.fail_write_lba = MOGFS_START_LBA + 1U;
+    assert(mogfs_write(&filesystem, "/notes.txt", content, 1) ==
+           MOGFS_ERROR_IO);
+    disk.fail_write_lba = -1;
+    assert(mogfs_read(&filesystem, "/notes.txt", read_buffer,
+                      sizeof(read_buffer), &read_size) == MOGFS_OK);
+    assert(read_size == sizeof(content));
+    assert(memcmp(content, read_buffer, sizeof(content)) == 0);
+
+    unsigned int active_directory_lba = MOGFS_START_LBA + 1U +
+        filesystem.active_directory_bank * MOGFS_DIRECTORY_SECTORS;
+    disk.sectors[active_directory_lba][0] ^= 1;
+    assert(mogfs_list(&filesystem, "/", files, MOGFS_ENTRY_COUNT, &count) ==
+           MOGFS_ERROR_CORRUPT);
+    disk.sectors[active_directory_lba][0] ^= 1;
+
+    assert(mogfs_delete(&filesystem, "/file2") == MOGFS_OK);
+    assert(mogfs_delete(&filesystem, "/missing") == MOGFS_ERROR_NOT_FOUND);
+    assert(mogfs_create_file(&filesystem, "/", "replacement") == MOGFS_OK);
+
+    disk.sectors[MOGFS_START_LBA][8] = 3;
+    store_u32(disk.sectors[MOGFS_START_LBA] + 508,
+              test_crc32(disk.sectors[MOGFS_START_LBA], 508));
+    assert(mogfs_mount(&filesystem, &device) == MOGFS_ERROR_UNSUPPORTED);
+    disk.sectors[MOGFS_START_LBA][8] = 2;
+    store_u32(disk.sectors[MOGFS_START_LBA] + 508,
+              test_crc32(disk.sectors[MOGFS_START_LBA], 508));
+    assert(mogfs_mount(&filesystem, &device) == MOGFS_OK);
+}
+
+static void test_mogfs_reports_disk_capacity_and_io_errors(void) {
+    static struct mock_disk disk;
+    struct mogfs_block_device device = {
+        &disk, MOCK_DISK_SECTORS, mock_read_sector, mock_write_sector
+    };
+    struct mogfs filesystem;
+    unsigned char content[MOGFS_FILE_MAX_SIZE] = {0x3C};
+
+    memset(&disk, 0, sizeof(disk));
+    disk.sector_count = MOCK_DISK_SECTORS;
+    disk.fail_read_lba = -1;
+    disk.fail_write_lba = -1;
+    assert(mogfs_format(&device) == MOGFS_OK);
+    assert(mogfs_mount(&filesystem, &device) == MOGFS_OK);
+    for (unsigned int i = 0; i < MOGFS_FILE_COUNT; i++) {
+        char name[8] = "file0";
+        name[4] = (char)('0' + i);
+        assert(mogfs_create_file(&filesystem, "/", name) == MOGFS_OK);
+    }
+
+    disk.sector_count--;
+    assert(mogfs_write(&filesystem, "/file7", content, sizeof(content)) ==
+           MOGFS_ERROR_IO);
+    disk.sector_count = MOCK_DISK_SECTORS;
+    unsigned char read_buffer[MOGFS_FILE_MAX_SIZE];
+    unsigned int read_size = 1;
+    assert(mogfs_read(&filesystem, "/file7", read_buffer, sizeof(read_buffer),
+                      &read_size) == MOGFS_OK);
+    assert(read_size == 0);
+
+    disk.fail_read_lba = MOGFS_START_LBA;
+    assert(mogfs_mount(&filesystem, &device) == MOGFS_ERROR_IO);
+}
+
 int main(void) {
     test_rtc_formats_and_failure();
     test_timer_counters();
@@ -306,6 +619,9 @@ int main(void) {
     test_editor_empty_save_slot();
     test_editor_disk_failures_preserve_document();
     test_ata_selects_device_before_polling();
+    test_ata_sector_count_initializes_filesystem_device();
+    test_mogfs_storage_and_file_operations();
+    test_mogfs_reports_disk_capacity_and_io_errors();
     puts("MogOS stability tests passed");
     return 0;
 }

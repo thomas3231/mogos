@@ -8,8 +8,9 @@
    the jingle. Settings reset when MogOS restarts.
 4. Open **Snake**. Steer with arrows or **W/A/S/D**, pause with **P**, hit a
    wall, then press **Enter** to restart. **Ctrl+H** returns to the desktop.
-5. Open the editor, type a short line, save with **Ctrl+S**, then leave and
-   reopen it to show the saved text.
+5. Open **File Explorer** and create a folder and `.txt` file with **D** and
+   **N**. Open it, type a short line, save with **Ctrl+S**, then reopen it to
+   show the saved text. **Ctrl+O** opens the editor's file picker.
 6. Explain that the document is stored on the attached ATA disk, not in the
    read-only ISO. About lists the main limitations.
 
@@ -48,13 +49,13 @@ emulation, read-only, and not USB-bootable.
   collision/restart, and the desktop status bar were checked in QEMU.
 - `xorriso` confirmed the BIOS El Torito floppy-emulation entry.
 
-`make test` covers selected RTC, timer, ATA, editor, and Snake cases. Screenshots
-from the QEMU checks are in
+`make test` covers selected RTC, timer, ATA, editor, Snake, and MogFS cases.
+Screenshots from the original QEMU checks are in
 `release/core-demo-2026-10-16/screenshots/`.
 
 ## What the demo does not have
 
-The editor stores one document, up to 2,042 characters, in a fixed `MOG1` save
-slot on an ATA disk. There is no general filesystem or file explorer. The ISO
-is read-only. USB boot, mouse support, networking, paging, user-mode programs,
-and multitasking are not implemented.
+The legacy `MOG1` save slot still stores one document up to 2,042 characters;
+F2/F3 retain access to it. New text files use the nested MogFS filesystem.
+The ISO is read-only. USB boot, mouse support, networking, paging, user-mode
+programs, and multitasking are not implemented.
