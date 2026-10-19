@@ -36,14 +36,10 @@ Without native Windows QEMU, it falls back to WSLg's GTK software display.
 - In Snake: **arrows** or **W/A/S/D** steer; **P** pauses; **Enter** restarts
   after a collision; **Ctrl+H** exits.
 - The terminal accepts `ping`, `fetch`, `run snake`, `run editor`, `about`,
-  `settings`, and `exit`. `fetch` shows MogOS details and the OS image; it
-  reports only runtime details MogOS currently has, such as uptime, CPU usage,
-  and display resolution.
+  `settings`, and `exit`. `fetch` shows a text-only MogOS system summary with
+  runtime details such as uptime, CPU usage, and display resolution.
 
-To refresh the embedded fetch image after replacing `img/os.png`, install
-Pillow and run `python3 tools/convert_os_image.py`. The normal kernel build uses
-the checked-in RGB565 image and does not require Pillow.
-The fetch display appears automatically when you enter the desktop after boot.
+The fetch summary appears automatically when you enter the desktop after boot.
 
 ## Saving and limitations
 

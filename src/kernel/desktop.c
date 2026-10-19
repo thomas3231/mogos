@@ -171,11 +171,6 @@ char terminal_history[TERMINAL_MAX_LINES][40];
 int terminal_line_count = 0;
 static int terminal_fetch_visible = 0;
 
-#define FETCH_IMAGE_WIDTH 160
-#define FETCH_IMAGE_HEIGHT 169
-
-extern const unsigned char _binary_build_os_image_rgb565_start[];
-
 #define EDITOR_CAPACITY 2043
 #define EDITOR_CONTENT_X 4
 #define EDITOR_CONTENT_Y (STATUS_BAR_HEIGHT + 16)
@@ -590,25 +585,7 @@ void draw_terminal(void) {
     int ty = STATUS_BAR_HEIGHT + 4;
 
     if (terminal_fetch_visible) {
-        int image_x = tx;
-        int image_y = ty;
-        int info_x = image_x + FETCH_IMAGE_WIDTH + 12;
-        unsigned char* pixels = (unsigned char*)_binary_build_os_image_rgb565_start;
-
-        for (int y = 0; y < FETCH_IMAGE_HEIGHT; y++) {
-            for (int x = 0; x < FETCH_IMAGE_WIDTH; x++) {
-                int offset = (y * FETCH_IMAGE_WIDTH + x) * 2;
-                unsigned short pixel = pixels[offset] | (pixels[offset + 1] << 8);
-                unsigned char red5 = (pixel >> 11) & 0x1F;
-                unsigned char green6 = (pixel >> 5) & 0x3F;
-                unsigned char blue5 = pixel & 0x1F;
-                unsigned char red = (red5 << 3) | (red5 >> 2);
-                unsigned char green = (green6 << 2) | (green6 >> 4);
-                unsigned char blue = (blue5 << 3) | (blue5 >> 2);
-                put_pixel(image_x + x, image_y + y, red, green, blue);
-            }
-        }
-
+        int info_x = tx;
         const unsigned char accent_r = 0xE0, accent_g = 0x70, accent_b = 0xA0;
         const unsigned char value_r = 0xD0, value_g = 0xD0, value_b = 0xD0;
         fetch_draw_text(info_x, ty, "Thomas@MogOS", accent_r, accent_g, accent_b);
@@ -649,8 +626,7 @@ void draw_terminal(void) {
                              accent_r, accent_g, accent_b, value_r, value_g, value_b);
             info_y += 11;
         }
-
-        ty += FETCH_IMAGE_HEIGHT + 12;
+        ty = info_y + 4;
     } else {
         for (int i = 0; i < terminal_line_count; i++) {
             int cx = tx;

@@ -74,8 +74,8 @@ $(BUILD_DIR)/bootloader.bin: always
 #
 kernel: $(BUILD_DIR)/kernel.bin
 
-$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o $(BUILD_DIR)/os_image.o
-	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o $(BUILD_DIR)/os_image.o --oformat binary
+$(BUILD_DIR)/kernel.bin: always $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o
+	$(LD) -m elf_i386 -T $(SRC_DIR)/kernel/linker.ld -o $(BUILD_DIR)/kernel.bin $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/heap.o $(BUILD_DIR)/timer.o $(BUILD_DIR)/palette.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/rtc.o $(BUILD_DIR)/speaker.o $(BUILD_DIR)/ata.o $(BUILD_DIR)/floppy.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/splash.o $(BUILD_DIR)/sprite.o $(BUILD_DIR)/snake.o --oformat binary
 
 $(BUILD_DIR)/kernel_entry.o: always $(SRC_DIR)/kernel/main.asm
 	$(ASM) $(SRC_DIR)/kernel/main.asm -f elf32 -o $(BUILD_DIR)/kernel_entry.o
@@ -124,10 +124,6 @@ $(BUILD_DIR)/sprite.o: always $(SRC_DIR)/kernel/sprite.c
 
 $(BUILD_DIR)/snake.o: always $(SRC_DIR)/kernel/snake.c
 	$(CC) -m32 -ffreestanding -fno-pie -fno-pic -c $(SRC_DIR)/kernel/snake.c -o $(BUILD_DIR)/snake.o
-
-$(BUILD_DIR)/os_image.o: always $(SRC_DIR)/kernel/os_image.rgb565
-	cp $(SRC_DIR)/kernel/os_image.rgb565 $(BUILD_DIR)/os_image.rgb565
-	objcopy -I binary -O elf32-i386 -B i386 $(BUILD_DIR)/os_image.rgb565 $@
 
 #
 # Tools
