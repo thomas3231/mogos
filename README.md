@@ -68,13 +68,15 @@ image; writing it directly to a USB drive will not make it bootable. MogOS does
 not yet have mouse support, networking, paging, user-mode programs, or a
 scheduler.
 
-## Tests and demo package
+## Tests and releases
 
-`make test` runs host-side checks for RTC, timer, ATA, editor, Snake, and MogFS
-format/mount, nested-path, persistence, and I/O-failure behavior. Also boot the
-ISO in QEMU before relying on a build.
+`make test` runs host-side checks for the heap, RTC, timer, ATA, editor, Snake,
+and MogFS format/mount, nested-path, persistence, and I/O-failure behavior.
+Also boot the ISO in QEMU before relying on a build.
 
-The [Phase 1 demo package](./release/core-demo-2026-10-16/) contains a tested
-ISO, a separate blank 16 MiB ATA disk, checksums, and screenshots. The disk is
-writable; use a copy for tests. See [PRESENTATION.md](./PRESENTATION.md) for a
-short demo and verification checklist.
+The [MogOS v0.2.0 release package](./release/mogos-v0.2.0/) contains the
+current ISO, a separate blank 16 MiB ATA disk, checksums, and release notes.
+Use a copy of the writable disk for tests. The earlier
+[v0.1.0 core demo package](./release/core-demo-2026-10-16/) remains available.
+See [PRESENTATION.md](./PRESENTATION.md) for a short demo and verification
+checklist.

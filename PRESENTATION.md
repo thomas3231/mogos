@@ -53,6 +53,17 @@ emulation, read-only, and not USB-bootable.
 Screenshots from the original QEMU checks are in
 `release/core-demo-2026-10-16/screenshots/`.
 
+## MogFS reboot verification — 30 October 2026
+
+- Built the current ISO and booted it in QEMU with a fresh test copy of the
+  packaged blank demo disk; the original packaged image was left untouched.
+- Formatted the MogFS region, created `/phase2/persist.txt`, and saved
+  `Persistence after reboot` from the editor.
+- Reset the guest, reopened the file from the remounted volume, and confirmed
+  the saved text was still present.
+- `make test` passed, and `xorriso` confirmed the ISO's BIOS El Torito
+  floppy-emulation boot entry.
+
 ## What the demo does not have
 
 The legacy `MOG1` save slot still stores one document up to 2,042 characters;

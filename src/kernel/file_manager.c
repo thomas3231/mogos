@@ -433,8 +433,7 @@ void file_manager_handle_key(char key) {
                                 entries[selected_entry].name)) {
                     int result = mogfs_delete(&filesystem, path);
                     set_status(result == MOGFS_OK ? "Deleted" :
-                               result == MOGFS_ERROR_NOT_EMPTY ?
-                               "Folder is not empty" : "Delete failed");
+                               "Delete failed");
                     refresh_entries();
                 }
             } else if (mode == FILE_MANAGER_CONFIRM_OVERWRITE) {
@@ -467,7 +466,7 @@ void file_manager_handle_key(char key) {
     } else if (key == 'x' || key == 'X') {
         if (filesystem.mounted && selected_entry < entry_count) {
             input_mode = FILE_MANAGER_CONFIRM_DELETE;
-            set_status("Delete selected file or empty folder?");
+            set_status("Delete selected item and all contents?");
         } else if (!filesystem.mounted &&
                    (mogfs_ata_device_init(&block_device))) {
             input_mode = FILE_MANAGER_CONFIRM_FORMAT;

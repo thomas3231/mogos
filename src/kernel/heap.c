@@ -1,7 +1,9 @@
 #include "heap.h"
+#include <stdint.h>
 
 #define HEAP_START 0x200000
 #define HEAP_SIZE  0x800000   // 8MB — comfortably covers even a large VESA framebuffer
+#define HEAP_ALIGNMENT 8U
 
 struct block_header {
     unsigned int size;
@@ -9,42 +11,73 @@ struct block_header {
     struct block_header* next;
 };
 
-struct block_header* heap_start_block;
-unsigned char* heap_uncarved;   // memory not yet split into any block at all
-unsigned char* heap_end;
+static struct block_header* heap_start_block;
+static uintptr_t heap_uncarved;
+static uintptr_t heap_end;
 
 void heap_init(void) {
+    heap_init_region((void*)HEAP_START, HEAP_SIZE);
+}
+
+int heap_init_region(void* memory, unsigned int size) {
+    uintptr_t start = (uintptr_t)memory;
+    uintptr_t end;
+    uintptr_t aligned_start;
+
     heap_start_block = 0;
-    heap_uncarved = (unsigned char*)HEAP_START;
-    heap_end = (unsigned char*)(HEAP_START + HEAP_SIZE);
+    heap_uncarved = 0;
+    heap_end = 0;
+    if (!memory || start > UINTPTR_MAX - size ||
+        start > UINTPTR_MAX - (HEAP_ALIGNMENT - 1U)) return 0;
+
+    end = start + size;
+    aligned_start = (start + HEAP_ALIGNMENT - 1U) &
+                    ~((uintptr_t)HEAP_ALIGNMENT - 1U);
+    if (aligned_start > end ||
+        end - aligned_start < sizeof(struct block_header) +
+                             HEAP_ALIGNMENT) {
+        return 0;
+    }
+
+    heap_uncarved = aligned_start;
+    heap_end = end;
+    return 1;
+}
+
+static unsigned int aligned_header_size(void) {
+    return (sizeof(struct block_header) + HEAP_ALIGNMENT - 1U) &
+           ~(HEAP_ALIGNMENT - 1U);
 }
 
 void* kmalloc(unsigned int size) {
-    // 1. Search existing blocks for a free one big enough to reuse
+    unsigned int header_size = aligned_header_size();
+    unsigned int aligned_size;
     struct block_header* current = heap_start_block;
     struct block_header* prev = 0;
 
+    if (!size || size > ~0U - (HEAP_ALIGNMENT - 1U)) return 0;
+    aligned_size = (size + HEAP_ALIGNMENT - 1U) &
+                   ~(HEAP_ALIGNMENT - 1U);
+
     while (current) {
-        if (current->free && current->size >= size) {
+        if (current->free && current->size >= aligned_size) {
             current->free = 0;
-            return (void*)(current + 1);   // data starts right after the header
+            return (void*)((uintptr_t)current + header_size);
         }
         prev = current;
         current = current->next;
     }
 
-    // 2. No suitable free block found -- carve a brand new one from untouched memory
-    unsigned int total_needed = sizeof(struct block_header) + size;
-    if (heap_uncarved + total_needed > heap_end) {
-        return 0;   // genuinely out of memory
-    }
+    if (heap_uncarved > heap_end ||
+        aligned_size > heap_end - heap_uncarved ||
+        header_size > heap_end - heap_uncarved - aligned_size) return 0;
 
     struct block_header* new_block = (struct block_header*)heap_uncarved;
-    new_block->size = size;
+    new_block->size = aligned_size;
     new_block->free = 0;
     new_block->next = 0;
 
-    heap_uncarved += total_needed;
+    heap_uncarved += header_size + aligned_size;
 
     if (prev) {
         prev->next = new_block;
@@ -52,19 +85,35 @@ void* kmalloc(unsigned int size) {
         heap_start_block = new_block;
     }
 
-    return (void*)(new_block + 1);
+    return (void*)((uintptr_t)new_block + header_size);
 }
 
 void kfree(void* ptr) {
     if (!ptr) return;
 
-    struct block_header* block = (struct block_header*)ptr - 1;
-    block->free = 1;
+    struct block_header* current = heap_start_block;
+    uintptr_t payload = (uintptr_t)ptr;
+    unsigned int header_size = aligned_header_size();
+    int found = 0;
 
-    // simple coalescing: if the very next block in memory is also free, merge them
-    struct block_header* next = block->next;
-    if (next && next->free) {
-        block->size += sizeof(struct block_header) + next->size;
-        block->next = next->next;
+    while (current) {
+        if ((uintptr_t)current + header_size == payload) {
+            if (current->free) return;
+            current->free = 1;
+            found = 1;
+            break;
+        }
+        current = current->next;
+    }
+    if (!found) return;
+
+    current = heap_start_block;
+    while (current && current->next) {
+        if (current->free && current->next->free) {
+            current->size += header_size + current->next->size;
+            current->next = current->next->next;
+        } else {
+            current = current->next;
+        }
     }
 }

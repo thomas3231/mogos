@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -8,6 +9,7 @@
 #include "snake.h"
 #include "ata.h"
 #include "mogfs.h"
+#include "heap.h"
 
 struct screen_info screen;
 
@@ -46,6 +48,60 @@ extern int snake_board_width;
 extern int snake_board_height;
 extern int snake_game_over;
 extern int snake_won;
+
+static void test_heap_boundaries_alignment_and_reuse(void) {
+    unsigned char memory[512];
+    void* first;
+    void* second;
+    void* reused;
+
+    assert(heap_init_region(memory + 1, sizeof(memory) - 1));
+    assert(kmalloc(0) == 0);
+    first = kmalloc(1);
+    second = kmalloc(17);
+    assert(first && second);
+    assert((uintptr_t)first % 8U == 0);
+    assert((uintptr_t)second % 8U == 0);
+
+    kfree(first);
+    reused = kmalloc(8);
+    assert(reused == first);
+    kfree(reused);
+    kfree(reused);
+    kfree((unsigned char*)second + 1);
+    kfree(second);
+
+    reused = kmalloc(48);
+    assert(reused == first);
+    kfree(reused);
+}
+
+static void test_heap_coalescing_and_exhaustion(void) {
+    unsigned char memory[256];
+    void* first;
+    void* second;
+    void* third;
+    unsigned int allocations = 0;
+
+    assert(heap_init_region(memory, sizeof(memory)));
+    first = kmalloc(40);
+    second = kmalloc(40);
+    third = kmalloc(40);
+    assert(first && second && third);
+    kfree(first);
+    kfree(second);
+    assert(kmalloc(80) == first);
+
+    assert(heap_init_region(memory, sizeof(memory)));
+    while (kmalloc(32)) allocations++;
+    assert(allocations > 0);
+    assert(kmalloc(1) == 0);
+    assert(heap_init_region(memory, sizeof(memory)));
+    assert(kmalloc(1));
+    assert(!heap_init_region(0, sizeof(memory)));
+    assert(!heap_init_region(memory, 1));
+    assert(kmalloc(1) == 0);
+}
 
 struct test_snake_segment {
     int x;
@@ -448,8 +504,6 @@ static void test_mogfs_storage_and_file_operations(void) {
            MOGFS_OK);
     assert(mogfs_create_file(&filesystem, "/missing", "file.txt") ==
            MOGFS_ERROR_NOT_FOUND);
-    assert(mogfs_delete(&filesystem, "/Documents") == MOGFS_ERROR_NOT_EMPTY);
-
     for (unsigned int i = 0; i < sizeof(content); i++) {
         content[i] = (unsigned char)(i * 17U);
     }
@@ -462,8 +516,12 @@ static void test_mogfs_storage_and_file_operations(void) {
     assert(mogfs_list(&filesystem, "/Documents/Work", files, MOGFS_ENTRY_COUNT,
                       &count) == MOGFS_OK);
     assert(count == 1 && strcmp(files[0].name, "notes.txt") == 0);
-    assert(mogfs_delete(&filesystem, "/Documents/Work/notes.txt") == MOGFS_OK);
-    assert(mogfs_delete(&filesystem, "/Documents/Work") == MOGFS_OK);
+    assert(mogfs_delete(&filesystem, "/Documents") == MOGFS_OK);
+    assert(mogfs_read(&filesystem, "/Documents/Work/notes.txt", read_buffer,
+                      sizeof(read_buffer), &read_size) == MOGFS_ERROR_NOT_FOUND);
+    assert(mogfs_list(&filesystem, "/", files, MOGFS_ENTRY_COUNT, &count) ==
+           MOGFS_OK);
+    assert(count == 1 && strcmp(files[0].name, "notes.txt") == 0);
     assert(mogfs_write(&filesystem, "/notes.txt", content, sizeof(content)) ==
            MOGFS_OK);
     assert(mogfs_read(&filesystem, "/notes.txt", read_buffer,
@@ -510,7 +568,7 @@ static void test_mogfs_storage_and_file_operations(void) {
     assert(mogfs_mount(&filesystem, &device) == MOGFS_OK);
     assert(mogfs_list(&filesystem, "/", files, MOGFS_ENTRY_COUNT, &count) ==
            MOGFS_OK);
-    assert(count == 2 && strcmp(files[0].name, "notes.txt") == 0);
+    assert(count == 1 && strcmp(files[0].name, "notes.txt") == 0);
 
     for (unsigned int i = 1; i < MOGFS_FILE_COUNT; i++) {
         char name[8] = "file0";
@@ -521,7 +579,7 @@ static void test_mogfs_storage_and_file_operations(void) {
            MOGFS_ERROR_NO_SPACE);
     assert(mogfs_list(&filesystem, "/", files, MOGFS_ENTRY_COUNT, &count) ==
            MOGFS_OK);
-    assert(count == MOGFS_FILE_COUNT + 1U);
+    assert(count == MOGFS_FILE_COUNT);
     assert(mogfs_list(&filesystem, "/", files, 1, &count) ==
            MOGFS_ERROR_BUFFER_TOO_SMALL);
 
@@ -545,7 +603,8 @@ static void test_mogfs_storage_and_file_operations(void) {
     assert(read_size == sizeof(content));
     assert(memcmp(content, read_buffer, sizeof(content)) == 0);
 
-    disk.fail_write_lba = MOGFS_START_LBA + 1U;
+    disk.fail_write_lba = MOGFS_START_LBA + 1U +
+        (1U - filesystem.active_directory_bank) * MOGFS_DIRECTORY_SECTORS + 1U;
     assert(mogfs_write(&filesystem, "/notes.txt", content, 1) ==
            MOGFS_ERROR_IO);
     disk.fail_write_lba = -1;
@@ -610,6 +669,8 @@ static void test_mogfs_reports_disk_capacity_and_io_errors(void) {
 }
 
 int main(void) {
+    test_heap_boundaries_alignment_and_reuse();
+    test_heap_coalescing_and_exhaustion();
     test_rtc_formats_and_failure();
     test_timer_counters();
     test_snake_queued_turns();

@@ -667,6 +667,7 @@ int mogfs_write(struct mogfs* filesystem, const char* path,
 
 int mogfs_delete(struct mogfs* filesystem, const char* path) {
     unsigned char directory[MOGFS_DIRECTORY_SECTORS * MOGFS_SECTOR_SIZE];
+    unsigned char remove_entry[MOGFS_ENTRY_COUNT] = {0};
     char basename[MOGFS_FILE_NAME_SIZE];
     uint16_t parent;
     int result = read_directory(filesystem, directory);
@@ -675,16 +676,25 @@ int mogfs_delete(struct mogfs* filesystem, const char* path) {
     if (result != MOGFS_OK) return result;
     int id = find_entry_id(directory, parent, basename);
     if (id < 0) return MOGFS_ERROR_NOT_FOUND;
-    unsigned char* entry = entry_at(directory, (uint32_t)id - 1U);
-    if (entry[MOGFS_ENTRY_TYPE_OFFSET] == MOGFS_TYPE_DIRECTORY) {
+
+    remove_entry[id - 1] = 1;
+    for (uint32_t pass = 0; pass < MOGFS_ENTRY_COUNT; pass++) {
         for (uint32_t i = 0; i < MOGFS_ENTRY_COUNT; i++) {
-            const unsigned char* child = const_entry_at(directory, i);
-            if (entry_is_active(child) &&
-                read_u16(child + MOGFS_ENTRY_PARENT_OFFSET) == id) {
-                return MOGFS_ERROR_NOT_EMPTY;
+            const unsigned char* entry = const_entry_at(directory, i);
+            uint16_t entry_parent =
+                read_u16(entry + MOGFS_ENTRY_PARENT_OFFSET);
+            if (entry_is_active(entry) && entry_parent &&
+                remove_entry[entry_parent - 1U]) {
+                remove_entry[i] = 1;
             }
         }
     }
-    for (uint32_t i = 0; i < MOGFS_ENTRY_SIZE; i++) entry[i] = 0;
+
+    for (uint32_t i = 0; i < MOGFS_ENTRY_COUNT; i++) {
+        if (remove_entry[i]) {
+            unsigned char* entry = entry_at(directory, i);
+            for (uint32_t j = 0; j < MOGFS_ENTRY_SIZE; j++) entry[j] = 0;
+        }
+    }
     return write_directory(filesystem, directory);
 }
