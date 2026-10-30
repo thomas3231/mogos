@@ -74,9 +74,10 @@ scheduler.
 and MogFS format/mount, nested-path, persistence, and I/O-failure behavior.
 Also boot the ISO in QEMU before relying on a build.
 
-The [MogOS v0.2.0 release package](./release/mogos-v0.2.0/) contains the
-current ISO, a separate blank 16 MiB ATA disk, checksums, and release notes.
-Use a copy of the writable disk for tests. The earlier
+The source for the [MogOS v0.2.0 release](./release/mogos-v0.2.0/) is tagged
+`v0.2.0`. Its package contains the current ISO, a separate blank 16 MiB ATA
+disk, checksums, and release notes. Use a copy of the writable disk for tests.
+The earlier
 [v0.1.0 core demo package](./release/core-demo-2026-10-16/) remains available.
 See [PRESENTATION.md](./PRESENTATION.md) for a short demo and verification
 checklist.
