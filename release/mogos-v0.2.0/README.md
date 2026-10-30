@@ -28,3 +28,10 @@ qemu-system-i386 -cdrom mogos-v0.2.0.iso -boot d \
 The explorer initializes the reserved MogFS area only after explicit
 confirmation. Do not use a valuable disk image for filesystem experiments.
 See the repository `README.md` and `PRESENTATION.md` for controls and details.
+
+## Verification
+
+The package was built from the v0.2.0 source checkpoint. `make test` passed,
+the ISO booted to the desktop in QEMU, and `xorriso` confirmed its BIOS
+El Torito floppy-emulation entry. The test suite includes heap alignment,
+reuse, coalescing, invalid-free, and exhaustion checks.
