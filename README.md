@@ -65,14 +65,15 @@ changes. Without an ATA disk, editing and file management are unavailable.
 
 The ISO uses legacy-BIOS El Torito floppy emulation. It is not a USB-hybrid
 image; writing it directly to a USB drive will not make it bootable. MogOS does
-not yet have mouse support, networking, paging, user-mode programs, or a
-scheduler.
+not yet have mouse support, networking, paging, user-mode programs, or
+timer-driven preemption. Its cooperative scheduler runs kernel tasks only.
 
 ## Tests and releases
 
-`make test` runs host-side checks for the heap, RTC, timer, ATA, editor, Snake,
-and MogFS format/mount, nested-path, persistence, and I/O-failure behavior.
-Also boot the ISO in QEMU before relying on a build.
+`make test` runs host-side checks for the heap, RTC, timer, cooperative task
+selection and stack construction, ATA, editor, Snake, and MogFS
+format/mount, nested-path, persistence, and I/O-failure behavior. Also boot
+the ISO in QEMU before relying on a build.
 
 The source for the [MogOS v0.2.0 release](./release/mogos-v0.2.0/) is tagged
 `v0.2.0`. Its package contains the current ISO, a separate blank 16 MiB ATA

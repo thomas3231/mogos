@@ -88,10 +88,24 @@ static void refresh_entries(void) {
     ensure_selection_visible();
 }
 
+static void set_mount_error_status(int result) {
+    if (result == MOGFS_ERROR_INVALID_ARGUMENT) {
+        set_status("Disk is too small for MogFS");
+    } else if (result == MOGFS_ERROR_IO) {
+        set_status("Disk read failed");
+    } else if (result == MOGFS_ERROR_UNSUPPORTED) {
+        set_status("Unsupported MogFS version; X then Y to reformat");
+    } else if (result == MOGFS_ERROR_CORRUPT) {
+        set_status("No MogFS volume; X then Y to format reserved area");
+    } else {
+        set_status("Cannot mount MogFS volume");
+    }
+}
+
 static int append_path(char* destination, const char* directory,
                        const char* name) {
     uint32_t length = 0;
-    while (directory[length] && length < MOGFS_PATH_SIZE) {
+    while (length < MOGFS_PATH_SIZE && directory[length]) {
         destination[length] = directory[length];
         length++;
     }
@@ -193,16 +207,27 @@ static int mount_filesystem(void) {
         refresh_entries();
         return 1;
     }
-    if (result == MOGFS_ERROR_INVALID_ARGUMENT) {
-        set_status("Disk is too small for MogFS");
-    } else if (result == MOGFS_ERROR_IO) {
-        set_status("Disk read failed");
-    } else if (result == MOGFS_ERROR_UNSUPPORTED) {
-        set_status("Unsupported MogFS version; X then Y to reformat");
-    } else {
-        set_status("No MogFS volume; X then Y to format reserved area");
-    }
+    set_mount_error_status(result);
     return 0;
+}
+
+static int ensure_mounted_for_create(void) {
+    int result;
+
+    if (filesystem.mounted) return 1;
+    if (!mogfs_ata_device_init(&block_device)) {
+        set_status("No supported ATA disk detected");
+        return 0;
+    }
+
+    result = mogfs_mount(&filesystem, &block_device);
+    if (result != MOGFS_OK) {
+        set_mount_error_status(result);
+        return 0;
+    }
+    set_status("Filesystem ready");
+    refresh_entries();
+    return 1;
 }
 
 static int ensure_mounted(void) {
@@ -248,6 +273,12 @@ static void begin_name_input(int mode) {
 static void commit_new_entry(void) {
     char name[MOGFS_FILE_NAME_SIZE];
     uint32_t length = input_length;
+
+    if (!ensure_mounted_for_create()) {
+        input_mode = 0;
+        return;
+    }
+
     for (uint32_t i = 0; i <= length; i++) name[i] = input_buffer[i];
 
     if (input_mode == FILE_MANAGER_INPUT_NEW_FILE) {
@@ -281,7 +312,13 @@ static void commit_new_entry(void) {
         set_status(result == MOGFS_ERROR_ALREADY_EXISTS ? "That name already exists" :
                    result == MOGFS_ERROR_NO_SPACE ? "Filesystem is full" :
                    result == MOGFS_ERROR_INVALID_ARGUMENT ? "Invalid name" :
-                   "Create failed; disk I/O error");
+                   result == MOGFS_ERROR_IO ? "Disk I/O error creating entry" :
+                   result == MOGFS_ERROR_CORRUPT ? "Filesystem metadata is corrupt" :
+                   result == MOGFS_ERROR_UNSUPPORTED ? "Unsupported MogFS version" :
+                   result == MOGFS_ERROR_NOT_FOUND ? "Folder not found" :
+                   result == MOGFS_ERROR_NOT_MOUNTED ?
+                       "No MogFS volume; X then Y to format reserved area" :
+                   "Create failed");
         return;
     }
 
@@ -460,8 +497,16 @@ void file_manager_handle_key(char key) {
     } else if (key == '\n') {
         enter_selected();
     } else if (key == 'n' || key == 'N') {
+        if (!ensure_mounted_for_create()) {
+            draw_manager();
+            return;
+        }
         begin_name_input(FILE_MANAGER_INPUT_NEW_FILE);
     } else if (key == 'd' || key == 'D') {
+        if (!ensure_mounted_for_create()) {
+            draw_manager();
+            return;
+        }
         begin_name_input(FILE_MANAGER_INPUT_NEW_DIRECTORY);
     } else if (key == 'x' || key == 'X') {
         if (filesystem.mounted && selected_entry < entry_count) {

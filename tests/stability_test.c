@@ -10,6 +10,7 @@
 #include "ata.h"
 #include "mogfs.h"
 #include "heap.h"
+#include "task.h"
 
 struct screen_info screen;
 
@@ -101,6 +102,49 @@ static void test_heap_coalescing_and_exhaustion(void) {
     assert(!heap_init_region(0, sizeof(memory)));
     assert(!heap_init_region(memory, 1));
     assert(kmalloc(1) == 0);
+}
+
+static void test_task_selection_round_robin(void) {
+    enum task_state states[TASK_MAX_COUNT] = {
+        TASK_READY, TASK_RUNNING, TASK_READY, TASK_TERMINATED
+    };
+
+    assert(task_find_next_ready(states, TASK_MAX_COUNT, -1) == 0);
+    assert(task_find_next_ready(states, TASK_MAX_COUNT, 0) == 2);
+    assert(task_find_next_ready(states, TASK_MAX_COUNT, 2) == 0);
+
+    states[0] = TASK_RUNNING;
+    states[2] = TASK_TERMINATED;
+    assert(task_find_next_ready(states, TASK_MAX_COUNT, -1) == -1);
+    assert(task_find_next_ready(0, TASK_MAX_COUNT, -1) == -1);
+    assert(task_find_next_ready(states, 0, -1) == -1);
+    assert(task_find_next_ready(states, TASK_MAX_COUNT, -2) == -1);
+    assert(task_find_next_ready(states, TASK_MAX_COUNT, TASK_MAX_COUNT) == -1);
+}
+
+static void task_test_bootstrap(void) {}
+
+static void test_task_initial_stack(void) {
+    unsigned char stack[96];
+    uintptr_t stack_start = (uintptr_t)stack;
+    unsigned int* context;
+    uintptr_t expected_top;
+
+    context = task_build_initial_stack(stack, sizeof(stack),
+                                       task_test_bootstrap);
+    assert(context != 0);
+    assert((unsigned char*)context >= stack);
+    assert((unsigned char*)(context + 5) <= stack + sizeof(stack));
+    expected_top = ((stack_start + sizeof(stack)) & ~(uintptr_t)15U) -
+                   sizeof(unsigned int);
+    assert((uintptr_t)(context + 5) == expected_top);
+    assert((expected_top & 15U) == 12U);
+    assert(context[0] == 0 && context[1] == 0 &&
+           context[2] == 0 && context[3] == 0);
+    assert(context[4] == (unsigned int)(uintptr_t)task_test_bootstrap);
+    assert(task_build_initial_stack(0, sizeof(stack),
+                                    task_test_bootstrap) == 0);
+    assert(task_build_initial_stack(stack, 1, task_test_bootstrap) == 0);
 }
 
 struct test_snake_segment {
@@ -671,6 +715,8 @@ static void test_mogfs_reports_disk_capacity_and_io_errors(void) {
 int main(void) {
     test_heap_boundaries_alignment_and_reuse();
     test_heap_coalescing_and_exhaustion();
+    test_task_selection_round_robin();
+    test_task_initial_stack();
     test_rtc_formats_and_failure();
     test_timer_counters();
     test_snake_queued_turns();

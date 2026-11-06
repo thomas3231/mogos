@@ -78,17 +78,116 @@ enable_a20:
 
 
 set_vesa_mode:
+    ; Keep the existing QEMU mode as the first choice.
+    push es
+    mov ax, ds
+    mov es, ax
     mov ax, 0x4F01
     mov cx, 0x118
     mov di, vbe_mode_info
     int 0x10
+    pop es
+    cmp ax, 0x004F
+    jne .scan_modes
 
     mov ax, 0x4F02
     mov bx, 0x4118
     int 0x10
     cmp ax, 0x004F
+    jne .scan_modes
+
+    jmp .save_mode
+
+.scan_modes:
+    mov dword [vbe_info], 'VBE2'
+    push es
+    mov ax, ds
+    mov es, ax
+    mov ax, 0x4F00
+    mov di, vbe_info
+    int 0x10
+    pop es
+    cmp ax, 0x004F
     jne .vesa_failed
 
+    mov byte [vbe_pass], 0
+.start_pass:
+    mov ax, [vbe_info + 14]
+    mov [mode_off], ax
+    mov ax, [vbe_info + 16]
+    mov [mode_seg], ax
+
+.next_mode:
+    mov ax, [mode_seg]
+    mov fs, ax
+    mov si, [mode_off]
+    mov cx, [fs:si]
+    add word [mode_off], 2
+    jnc .pointer_ready
+    add word [mode_seg], 0x1000
+.pointer_ready:
+    cmp cx, 0xFFFF
+    je .end_of_list
+    mov [candidate_mode], cx
+
+    push es
+    mov ax, ds
+    mov es, ax
+    mov ax, 0x4F01
+    mov di, vbe_mode_info
+    int 0x10
+    pop es
+    cmp ax, 0x004F
+    jne .next_mode
+
+    mov ax, [vbe_mode_info]
+    and ax, 0x0099
+    cmp ax, 0x0099
+    jne .next_mode
+    cmp byte [vbe_mode_info + 27], 6
+    jne .next_mode
+    mov al, [vbe_mode_info + 25]
+    cmp al, 24
+    je .bpp_ok
+    cmp al, 32
+    jne .next_mode
+.bpp_ok:
+    mov ax, [vbe_mode_info + 18]
+    cmp byte [vbe_pass], 0
+    jne .loose
+    cmp ax, 1024
+    jne .next_mode
+    cmp word [vbe_mode_info + 20], 768
+    jne .next_mode
+    jmp .try_set
+.loose:
+    cmp ax, 800
+    jb .next_mode
+    cmp ax, 1280
+    ja .next_mode
+
+.try_set:
+    movzx eax, word [vbe_mode_info + 16]
+    movzx edx, word [vbe_mode_info + 20]
+    imul eax, edx
+    cmp eax, 0x800000
+    jae .next_mode
+
+    mov bx, [candidate_mode]
+    or bx, 0x4000
+    mov ax, 0x4F02
+    int 0x10
+    cmp ax, 0x004F
+    je .save_mode
+    jmp .next_mode
+
+.end_of_list:
+    cmp byte [vbe_pass], 0
+    jne .vesa_failed
+    mov byte [vbe_pass], 1
+    jmp .start_pass
+
+.save_mode:
     mov eax, [vbe_mode_info + 40]
     mov [framebuffer_addr], eax
 
@@ -112,6 +211,11 @@ set_vesa_mode:
     jmp $
 
 vbe_mode_info: times 256 db 0
+vbe_info: times 512 db 0
+mode_off: dw 0
+mode_seg: dw 0
+candidate_mode: dw 0
+vbe_pass: db 0
 framebuffer_addr: dd 0
 
 
@@ -170,6 +274,23 @@ fast_copy:
 
     pop edi
     pop esi
+    pop ebp
+    ret
+
+global task_context_switch
+task_context_switch:
+    push ebp
+    push ebx
+    push esi
+    push edi
+
+    mov eax, [esp + 20]
+    mov [eax], esp
+    mov esp, [esp + 24]
+
+    pop edi
+    pop esi
+    pop ebx
     pop ebp
     ret
 
